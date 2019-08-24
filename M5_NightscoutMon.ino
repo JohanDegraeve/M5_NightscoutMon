@@ -1,5 +1,5 @@
 /*  M5Stack Nightscout monitor
-    Copyright (C) 2018, 2019 Martin Lukasek <martin@lukasek.cz>
+    Copyright (C) 2019 Johan Degraeve
     
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -13,6 +13,8 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>. 
+
+    Original code by Martin Lukasek <martin@lukasek.cz>
     
     This software uses some 3rd party libraries:
     IniFile by Steve Marple <stevemarple@googlemail.com> (GNU LGPL v2.1)
@@ -279,39 +281,6 @@ void wifi_connect() {
   M5.Lcd.println("Connection done");
 }
 
-int8_t getBatteryLevel()
-{
-  Wire.beginTransmission(0x75);
-  Wire.write(0x78);
-  if (Wire.endTransmission(false) == 0
-   && Wire.requestFrom(0x75, 1)) {
-    int8_t bdata=Wire.read();
-    /* 
-    // write battery info to logfile.txt
-    File fileLog = SD.open("/logfile.txt", FILE_WRITE);    
-    if(!fileLog) {
-      Serial.println("Cannot write to logfile.txt");
-    } else {
-      int pos = fileLog.seek(fileLog.size());
-      struct tm timeinfo;
-      getLocalTime(&timeinfo);
-      fileLog.print(asctime(&timeinfo));
-      fileLog.print("   Battery level: "); fileLog.println(bdata, HEX);
-      fileLog.close();
-      Serial.print("Log file written: "); Serial.print(asctime(&timeinfo));
-    }
-    */
-    switch (bdata & 0xF0) {
-      case 0xE0: return 25;
-      case 0xC0: return 50;
-      case 0x80: return 75;
-      case 0x00: return 100;
-      default: return 0;
-    }
-  }
-  return -1;
-}
-
 // the setup routine runs once when M5Stack starts up
 void setup() {
   
@@ -337,61 +306,46 @@ void setup() {
     if(cardType == CARD_NONE){
         Serial.println("No SD card attached");
         M5.Lcd.println("No SD card attached");
-        while(1);
-    }
-
-    Serial.print("SD Card Type: ");
-    M5.Lcd.print("SD Card Type: ");
-    if(cardType == CARD_MMC){
-        Serial.println("MMC");
-        M5.Lcd.println("MMC");
-    } else if(cardType == CARD_SD){
-        Serial.println("SDSC");
-        M5.Lcd.println("SDSC");
-    } else if(cardType == CARD_SDHC){
-        Serial.println("SDHC");
-        M5.Lcd.println("SDHC");
     } else {
-        Serial.println("UNKNOWN");
-        M5.Lcd.println("UNKNOWN");
+      
+          uint64_t cardSize = SD.cardSize() / (1024 * 1024);
+          Serial.printf("SD Card Size: %llu MB\n", cardSize);
+          M5.Lcd.printf("SD Card Size: %llu MB\n", cardSize);
+      
+          readConfiguration(iniFilename, &cfg);
+          lcdBrightness = cfg.brightness1;
+          M5.Lcd.setBrightness(lcdBrightness);
+          
+          startupLogo();
+          yield();
+      
+          preferences.begin("M5StackNS", false);
+          if(preferences.getBool("SoftReset", false)) {
+            // no startup sound after soft reset and remove the SoftReset key
+            preferences.remove("SoftReset");
+          }
+          
+          preferences.end();
+      
+          delay(1000);
+          M5.Lcd.fillScreen(BLACK);
+      
+          M5.Lcd.setBrightness(lcdBrightness);
+          wifi_connect();
+          yield();// seems to be to let the board to things in the background, probably related to calling wifi_connect
+      
+          M5.Lcd.setBrightness(lcdBrightness);
+          M5.Lcd.fillScreen(BLACK);
+      
+          dispPage = cfg.default_page;
+          setPageIconPos(dispPage);
+          // stat startup time
+          msStart = millis();
+          // update glycemia now
+          msCount = msStart-16000;
+
     }
 
-    uint64_t cardSize = SD.cardSize() / (1024 * 1024);
-    Serial.printf("SD Card Size: %llu MB\n", cardSize);
-    M5.Lcd.printf("SD Card Size: %llu MB\n", cardSize);
-
-    readConfiguration(iniFilename, &cfg);
-    lcdBrightness = cfg.brightness1;
-    M5.Lcd.setBrightness(lcdBrightness);
-    
-    startupLogo();
-    yield();
-
-    preferences.begin("M5StackNS", false);
-    if(preferences.getBool("SoftReset", false)) {
-      // no startup sound after soft reset and remove the SoftReset key
-      preferences.remove("SoftReset");
-
-    }
-    
-    preferences.end();
-
-    delay(1000);
-    M5.Lcd.fillScreen(BLACK);
-
-    M5.Lcd.setBrightness(lcdBrightness);
-    wifi_connect();
-    yield();
-
-    M5.Lcd.setBrightness(lcdBrightness);
-    M5.Lcd.fillScreen(BLACK);
-
-    dispPage = cfg.default_page;
-    setPageIconPos(dispPage);
-    // stat startup time
-    msStart = millis();
-    // update glycemia now
-    msCount = msStart-16000;
 }
 
 void drawArrow(int x, int y, int asize, int aangle, int pwidth, int plength, uint16_t color){
@@ -448,17 +402,7 @@ struct NSinfo {
 } ns;
 
 void drawMiniGraph(struct NSinfo *ns){
-  /*
-  // draw help lines
-  for(int i=0; i<320; i+=40) {
-    M5.Lcd.drawLine(i, 0, i, 240, TFT_DARKGREY);
-  }
-  for(int i=0; i<240; i+=30) {
-    M5.Lcd.drawLine(0, i, 320, i, TFT_DARKGREY);
-  }
-  M5.Lcd.drawLine(0, 120, 320, 120, TFT_LIGHTGREY);
-  M5.Lcd.drawLine(160, 0, 160, 240, TFT_LIGHTGREY);
-  */
+
   int i;
   float glk;
   uint16_t sgvColor;
@@ -689,7 +633,7 @@ void update_glycemia() {
       M5.Lcd.drawString(cfg.userName, 0, 24, GFXFF);
       
 
-      // show BIG delta bellow the name
+      // show BIG delta below the name
       M5.Lcd.setFreeFont(FSSB24);
       M5.Lcd.setTextColor(TFT_LIGHTGREY, BLACK);
       M5.Lcd.setTextSize(1);
