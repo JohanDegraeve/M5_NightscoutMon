@@ -262,7 +262,7 @@ void wifi_connect() {
   WiFi.disconnect();
   delay(100);
 
-  printToLCDAndToSerial("WiFi connect start");
+  Serial.println("WiFi connect start");
 
   // We start by connecting to a WiFi network
   for(int i=0; i<=9; i++) {
@@ -270,18 +270,18 @@ void wifi_connect() {
       WiFiMulti.addAP(cfg.wlanssid[i], cfg.wlanpass[i]);
   }
 
-  printEmptyLineToLCDAndToSerial();  
-  printToLCDAndToSerial("Wait for WiFi... ");
+  
+  Serial.println("Wait for WiFi... ");
 
   if (WiFiMulti.run() != WL_CONNECTED) {
-      printToLCDAndToSerial("not connected");
+      Serial.println("not connected");
       return;
   }
 
-  printToLCDAndToSerial("");
-  printToLCDAndToSerial("WiFi connected to SSID "); printToLCDAndToSerial(WiFi.SSID());
-  printToLCDAndToSerial("IP address: ");
-  printToLCDAndToSerial(WiFi.localIP().toString());
+  Serial.println("");
+  Serial.println("WiFi connected to SSID "); Serial.println(WiFi.SSID());
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP().toString());
 
   configTime(cfg.timeZone, cfg.dst, ntpServer, "time.nist.gov", "time.google.com");
   delay(1000);
@@ -299,7 +299,7 @@ void wifi_connect() {
   Serial.println();
   printLocalTime();
 
-  printToLCDAndToSerial("Connection done");
+  Serial.println("Connection done");
 
 }
 
@@ -530,7 +530,7 @@ int readNightscout(char *url, char *token, struct NSinfo *ns) {
       
   } else {
     // WiFi not connected
-    ESP.restart();
+    wifi_connect();
   }
 
   M5.Lcd.fillRect(icon_xpos[0], icon_ypos[0], 16, 16, BLACK);
@@ -576,35 +576,42 @@ void update_glycemia() {
       M5.Lcd.setTextDatum(MC_DATUM);
       M5.Lcd.setTextColor(glColor, TFT_BLACK);
       char sensSgvStr[30];
+      strcpy(sensSgvStr, "---");
 
       struct tm timeinfo;
       // if we can't get timeinfo then skip it all
-      /*if (getLocalTime(&timeinfo)) {
-        time_t localTimeAsLong = mktime(&timeinfo);
-        unsigned long seconds = (unsigned long) localTimeAsLong;
-        char mystr[40];
-        sprintf(mystr,"Millis: %u",seconds);
-        printToLCDAndToSerial(mystr);
-      }*/
-      
 
-      if( cfg.show_mgdl ) {
-        if(ns.sensSgvMgDl<100) {
-          sprintf(sensSgvStr, "%2.0f", ns.sensSgvMgDl);
+      if (getLocalTime(&localTimeInfo)) {
+        time_t localTimeAsLong = mktime(&localTimeInfo);
+        localTimeInSeconds = (unsigned long) localTimeAsLong;
+
+        if (localTimeInSeconds > timeStampLatestNightScoutReadingInSeconds + (5 * 60 + 10)) {
+          // latest nightscout reading is more than 5 minutes old, don't show the value - value is "---"
           M5.Lcd.setFreeFont(FSSB24);
         } else {
-          sprintf(sensSgvStr, "%3.0f", ns.sensSgvMgDl);
-          M5.Lcd.setFreeFont(FSSB24);
-        }
-      } else {
-        if(ns.sensSgv<10) {
-          sprintf(sensSgvStr, "%3.1f", ns.sensSgv);
-          M5.Lcd.setFreeFont(FSSB24);
-        } else {
-          sprintf(sensSgvStr, "%4.1f", ns.sensSgv);
-          M5.Lcd.setFreeFont(FSSB18);
+                if( cfg.show_mgdl ) {
+                  if(ns.sensSgvMgDl<100) {
+                    sprintf(sensSgvStr, "%2.0f", ns.sensSgvMgDl);
+                    M5.Lcd.setFreeFont(FSSB24);
+                  } else {
+                    sprintf(sensSgvStr, "%3.0f", ns.sensSgvMgDl);
+                    M5.Lcd.setFreeFont(FSSB24);
+                  }
+                } else {
+                  if(ns.sensSgv<10) {
+                  sprintf(sensSgvStr, "%3.1f", ns.sensSgv);
+                  M5.Lcd.setFreeFont(FSSB24);
+                } else {
+                  sprintf(sensSgvStr, "%4.1f", ns.sensSgv);
+                  M5.Lcd.setFreeFont(FSSB18);
+                }
+              }
+
         }
       }
+
+      
+
       M5.Lcd.drawString(sensSgvStr, 160, 120, GFXFF);
     
       M5.Lcd.fillRect(0, 0, 320, 40, TFT_BLACK);
@@ -707,14 +714,13 @@ void loop(){
   delay(20);
   buttons_test();
 
-  // update glycemia every 15 seconds, if latest reading is more than 2 minutes old
   if (getLocalTime(&localTimeInfo)) {
         time_t localTimeAsLong = mktime(&localTimeInfo);
         localTimeInSeconds = (unsigned long) localTimeAsLong;
   }
-  
-  if((millis()-msCount>15000) && localTimeInSeconds > 0 && (localTimeInSeconds-timeStampLatestNightScoutReadingInSeconds>120)) {
-    printToLCDAndToSerial("in loop, calling update_glycemia");
+
+  // update glycemia every 120 seconds, or if latest reading is more than 2 minutes old, then check every 15 seconds
+  if((millis()-msCount>120000) || ((millis()-msCount>15000) && localTimeInSeconds > 0 && (localTimeInSeconds-timeStampLatestNightScoutReadingInSeconds>120))) {
     update_glycemia();
     msCount = millis();  
     Serial.print("msCount = "); Serial.println(msCount);
