@@ -89,6 +89,9 @@ static char *iniFilename = "/M5NS.INI";
 //timestamp of latest nightscout reading, initially 0
 unsigned long timeStampLatestNightScoutReadingInSeconds = 0;
 
+// to temporary store the latest shown string, each refresh, it will be checked if it has changed and if not then no redraw, otherwise the screen flickers annoyingly
+char previousSensSgvStr[30];
+
 DynamicJsonDocument JSONdoc(16384);
 
 struct NSinfo {
@@ -102,13 +105,6 @@ struct NSinfo {
   float last10sgv[10];
   bool is_xDrip = 0;  
   int arrowAngle = 180;
-  int delta_absolute = 0;
-  float delta_elapsedMins = 0;
-  bool delta_interpolated = 0;
-  int delta_mean5MinsAgo = 0;
-  int delta_mgdl = 0;
-  float delta_scaled = 0;
-  char delta_display[16];
 } ns;
 
 void setPageIconPos(int page) {
@@ -255,7 +251,7 @@ void buttons_test() {
 void wifi_connect() {
 
   if((WiFiMulti.run() == WL_CONNECTED)) {
-    printToLCDAndToSerial("In wifi_connect but already connected");
+    Serial.println("In wifi_connect but already connected");
   }
   
   WiFi.mode(WIFI_STA);
@@ -306,6 +302,9 @@ void wifi_connect() {
 // the setup routine runs once when M5Stack starts up
 void setup() {
 
+    // initialize previousSensSgvStr
+    strcpy(previousSensSgvStr, "---");
+    
     // initialize the M5Stack object
     M5.begin();
     
@@ -571,10 +570,6 @@ void update_glycemia() {
       sprintf(tmpstr, "Glyk: %4.1f %s", ns.sensSgv, ns.sensDir);
       Serial.println(tmpstr);
       
-      M5.Lcd.fillRect(0, 40, 320, 180, TFT_BLACK);
-      M5.Lcd.setTextSize(4);
-      M5.Lcd.setTextDatum(MC_DATUM);
-      M5.Lcd.setTextColor(glColor, TFT_BLACK);
       char sensSgvStr[30];
       strcpy(sensSgvStr, "---");
 
@@ -610,47 +605,25 @@ void update_glycemia() {
         }
       }
 
-      
-
-      M5.Lcd.drawString(sensSgvStr, 160, 120, GFXFF);
-    
-      M5.Lcd.fillRect(0, 0, 320, 40, TFT_BLACK);
-      M5.Lcd.setFreeFont(FSSB24);
-      M5.Lcd.setTextSize(1);
-      M5.Lcd.setTextDatum(TL_DATUM);
-      M5.Lcd.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-
-      char datetimeStr[30];
-      
-      if(cfg.show_current_time) {
-        if(getLocalTime(&timeinfo)) {
-          sprintf(datetimeStr, "%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min);  
-        } else {
-          strcpy(datetimeStr, "??:??");
+      boolean previousEqualToNew = true;
+      // check if the string to show is new
+      for (int i = 0; i < sizeof(sensSgvStr); i++) {
+        if (previousSensSgvStr[i] != sensSgvStr[i]) {
+          previousEqualToNew = false;
         }
-      } else {
-        sprintf(datetimeStr, "%02d:%02d", ns.sensTm.tm_hour, ns.sensTm.tm_min);
       }
-      M5.Lcd.drawString(datetimeStr, 0, 0, GFXFF);
-      
-      M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
-      M5.Lcd.drawString(ns.delta_display, 180, 0, GFXFF);
-
-      int ay=0;
-
-
-      if(ns.arrowAngle>=45)
-        ay=4;
-      else
-        if(ns.arrowAngle>-45)
-          ay=18;
-        else
-          ay=30;
-      
-      if(ns.arrowAngle!=180)
-        drawArrow(280, ay, 10, ns.arrowAngle+85, 28, 28, glColor);
- 
-
+      // if strings is new, then display the new string and copy to previousSensSgvStr
+      if (!previousEqualToNew) {
+         M5.Lcd.fillRect(0, 40, 320, 180, TFT_BLACK);
+         M5.Lcd.setTextSize(4);
+         M5.Lcd.setTextDatum(MC_DATUM);
+         M5.Lcd.setTextColor(glColor, TFT_BLACK);
+         M5.Lcd.drawString(sensSgvStr, 160, 120, GFXFF);
+        for (int i = 0; i < sizeof(sensSgvStr); i++) {
+          previousSensSgvStr[i] = sensSgvStr[i];
+        }
+      }
+    
       drawLogWarningIcon();
     }
     break;
