@@ -58,6 +58,7 @@ tConfig cfg;
 
 const char* ntpServer = "pool.ntp.org"; // "time.nist.gov", "time.google.com"
 struct tm localTimeInfo;
+unsigned long localTimeInSeconds = 0;
 int MAX_TIME_RETRY = 30;
 int lastSec = 61;
 int lastMin = 61;
@@ -85,12 +86,15 @@ unsigned long msStart;
 static uint8_t lcdBrightness = 10;
 static char *iniFilename = "/M5NS.INI";
 
+//timestamp of latest nightscout reading, initially 0
+unsigned long timeStampLatestNightScoutReadingInSeconds = 0;
+
 DynamicJsonDocument JSONdoc(16384);
 
 struct NSinfo {
   char sensDev[64];
   uint64_t rawtime = 0;
-  time_t sensTime = 0;
+  time_t sensTime = 0; /// time in seconds
   struct tm sensTm;
   char sensDir[32];
   float sensSgvMgDl = 0;
@@ -239,22 +243,26 @@ void buttons_test() {
       dispPage++;
       if(dispPage>MAX_PAGE)
         dispPage = 1;
-      // update_glycemia();
+
       setPageIconPos(dispPage);
       M5.Lcd.clear(BLACK);
       msCount = millis()-16000;
-      // play_tone(440, 100, 1);
+
     }
   }
 }
 
 void wifi_connect() {
+
+  if((WiFiMulti.run() == WL_CONNECTED)) {
+    printToLCDAndToSerial("In wifi_connect but already connected");
+  }
+  
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
   delay(100);
 
-  Serial.println("WiFi connect start");
-  M5.Lcd.println("WiFi connect start");
+  printToLCDAndToSerial("WiFi connect start");
 
   // We start by connecting to a WiFi network
   for(int i=0; i<=9; i++) {
@@ -262,25 +270,18 @@ void wifi_connect() {
       WiFiMulti.addAP(cfg.wlanssid[i], cfg.wlanpass[i]);
   }
 
-  Serial.println();
-  M5.Lcd.println("");
-  Serial.print("Wait for WiFi... ");
-  M5.Lcd.print("Wait for WiFi... ");
+  printEmptyLineToLCDAndToSerial();  
+  printToLCDAndToSerial("Wait for WiFi... ");
 
   if (WiFiMulti.run() != WL_CONNECTED) {
-      Serial.println("not connected");
-    M5.Lcd.println("not connected");
+      printToLCDAndToSerial("not connected");
       return;
   }
 
-  Serial.println("");
-  M5.Lcd.println("");
-  Serial.print("WiFi connected to SSID "); Serial.println(WiFi.SSID());
-  M5.Lcd.print("WiFi SSID "); M5.Lcd.println(WiFi.SSID());
-  Serial.println("IP address: ");
-  M5.Lcd.println("IP address: ");
-  Serial.println(WiFi.localIP());
-  M5.Lcd.println(WiFi.localIP());
+  printToLCDAndToSerial("");
+  printToLCDAndToSerial("WiFi connected to SSID "); printToLCDAndToSerial(WiFi.SSID());
+  printToLCDAndToSerial("IP address: ");
+  printToLCDAndToSerial(WiFi.localIP().toString());
 
   configTime(cfg.timeZone, cfg.dst, ntpServer, "time.nist.gov", "time.google.com");
   delay(1000);
@@ -298,8 +299,8 @@ void wifi_connect() {
   Serial.println();
   printLocalTime();
 
-  Serial.println("Connection done");
-  M5.Lcd.println("Connection done");
+  printToLCDAndToSerial("Connection done");
+
 }
 
 // the setup routine runs once when M5Stack starts up
@@ -354,7 +355,7 @@ void setup() {
           M5.Lcd.setBrightness(lcdBrightness);
           M5.Lcd.fillScreen(BLACK);
       
-          dispPage = cfg.default_page;
+          dispPage = 1;// default page is page with value large number
           setPageIconPos(dispPage);
           
           // stat startup time
@@ -460,6 +461,7 @@ int readNightscout(char *url, char *token, struct NSinfo *ns) {
           strlcpy(ns->sensDir, JSONdoc[sgvindex]["direction"] | "N/A", 32);
           ns->sensSgv = JSONdoc[sgvindex]["sgv"]; // get value of sensor measurement
           ns->sensTime = ns->rawtime / 1000; // no milliseconds, since 2000 would be - 946684800, but ok
+          timeStampLatestNightScoutReadingInSeconds = ns->sensTime;
           for(int i=0; i<=9; i++) {
             ns->last10sgv[i]=JSONdoc[i]["sgv"];
             ns->last10sgv[i]/=18.0;
@@ -574,7 +576,18 @@ void update_glycemia() {
       M5.Lcd.setTextDatum(MC_DATUM);
       M5.Lcd.setTextColor(glColor, TFT_BLACK);
       char sensSgvStr[30];
-      int smaller_font = 0;
+
+      struct tm timeinfo;
+      // if we can't get timeinfo then skip it all
+      /*if (getLocalTime(&timeinfo)) {
+        time_t localTimeAsLong = mktime(&timeinfo);
+        unsigned long seconds = (unsigned long) localTimeAsLong;
+        char mystr[40];
+        sprintf(mystr,"Millis: %u",seconds);
+        printToLCDAndToSerial(mystr);
+      }*/
+      
+
       if( cfg.show_mgdl ) {
         if(ns.sensSgvMgDl<100) {
           sprintf(sensSgvStr, "%2.0f", ns.sensSgvMgDl);
@@ -601,7 +614,7 @@ void update_glycemia() {
       M5.Lcd.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
 
       char datetimeStr[30];
-      struct tm timeinfo;
+      
       if(cfg.show_current_time) {
         if(getLocalTime(&timeinfo)) {
           sprintf(datetimeStr, "%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min);  
@@ -691,12 +704,17 @@ void update_glycemia() {
 // the loop routine runs over and over again forever
 void loop(){
 
-  
   delay(20);
   buttons_test();
 
-  // update glycemia every 15s
-  if(millis()-msCount>15000) {
+  // update glycemia every 15 seconds, if latest reading is more than 2 minutes old
+  if (getLocalTime(&localTimeInfo)) {
+        time_t localTimeAsLong = mktime(&localTimeInfo);
+        localTimeInSeconds = (unsigned long) localTimeAsLong;
+  }
+  
+  if((millis()-msCount>15000) && localTimeInSeconds > 0 && (localTimeInSeconds-timeStampLatestNightScoutReadingInSeconds>120)) {
+    printToLCDAndToSerial("in loop, calling update_glycemia");
     update_glycemia();
     msCount = millis();  
     Serial.print("msCount = "); Serial.println(msCount);
@@ -711,8 +729,8 @@ void loop(){
     strcpy(lastResetTime, "Unknown");
     if(getLocalTime(&localTimeInfo)) {
       sprintf(localTimeStr, "%02d:%02d", localTimeInfo.tm_hour, localTimeInfo.tm_min);
-      // no soft restart less than a minute from last restart to prevent several restarts in the same minute
-      if((millis()-msStart>60000) && (strcmp(cfg.restart_at_time, localTimeStr)==0)) {
+      // no soft restart less than 5 minutes from last restart to prevent several restarts in the same minute
+      if((millis()-msStart>300000) && (strcmp(cfg.restart_at_time, localTimeStr)==0)) {
         preferences.begin("M5StackNS", false);
         preferences.putBool("SoftReset", true);
 
@@ -723,4 +741,14 @@ void loop(){
   }
 
   M5.update();
+}
+
+void printToLCDAndToSerial(String text) {
+  Serial.println(text);
+  M5.Lcd.println(text);
+}
+
+void printEmptyLineToLCDAndToSerial() {
+   Serial.println();
+    M5.Lcd.println("");
 }
