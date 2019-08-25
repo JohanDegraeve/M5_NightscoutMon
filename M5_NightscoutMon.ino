@@ -38,6 +38,7 @@
 #include "M5NSconfig.h"
 
 
+
 extern const unsigned char sun_icon16x16[];
 extern const unsigned char clock_icon16x16[];
 extern const unsigned char timer_icon16x16[];
@@ -69,7 +70,7 @@ struct err_log_item {
 int err_log_ptr = 0;
 int err_log_count = 0;
 
-int dispPage = 0;
+int dispPage = 1;
 #define MAX_PAGE 2
 int icon_xpos[3] = {144, 144+18, 144+2*18};
 int icon_ypos[3] = {0, 0, 0};
@@ -85,6 +86,26 @@ static uint8_t lcdBrightness = 10;
 static char *iniFilename = "/M5NS.INI";
 
 DynamicJsonDocument JSONdoc(16384);
+
+struct NSinfo {
+  char sensDev[64];
+  uint64_t rawtime = 0;
+  time_t sensTime = 0;
+  struct tm sensTm;
+  char sensDir[32];
+  float sensSgvMgDl = 0;
+  float sensSgv = 0;
+  float last10sgv[10];
+  bool is_xDrip = 0;  
+  int arrowAngle = 180;
+  int delta_absolute = 0;
+  float delta_elapsedMins = 0;
+  bool delta_interpolated = 0;
+  int delta_mean5MinsAgo = 0;
+  int delta_mgdl = 0;
+  float delta_scaled = 0;
+  char delta_display[16];
+} ns;
 
 void setPageIconPos(int page) {
   switch(page) {
@@ -217,7 +238,7 @@ void buttons_test() {
     } else {
       dispPage++;
       if(dispPage>MAX_PAGE)
-        dispPage = 0;
+        dispPage = 1;
       // update_glycemia();
       setPageIconPos(dispPage);
       M5.Lcd.clear(BLACK);
@@ -246,10 +267,10 @@ void wifi_connect() {
   Serial.print("Wait for WiFi... ");
   M5.Lcd.print("Wait for WiFi... ");
 
-  while(WiFiMulti.run() != WL_CONNECTED) {
-      Serial.print(".");
-      M5.Lcd.print(".");
-      delay(500);
+  if (WiFiMulti.run() != WL_CONNECTED) {
+      Serial.println("not connected");
+    M5.Lcd.println("not connected");
+      return;
   }
 
   Serial.println("");
@@ -283,7 +304,7 @@ void wifi_connect() {
 
 // the setup routine runs once when M5Stack starts up
 void setup() {
-  
+
     // initialize the M5Stack object
     M5.begin();
     
@@ -307,10 +328,6 @@ void setup() {
         Serial.println("No SD card attached");
         M5.Lcd.println("No SD card attached");
     } else {
-      
-          uint64_t cardSize = SD.cardSize() / (1024 * 1024);
-          Serial.printf("SD Card Size: %llu MB\n", cardSize);
-          M5.Lcd.printf("SD Card Size: %llu MB\n", cardSize);
       
           readConfiguration(iniFilename, &cfg);
           lcdBrightness = cfg.brightness1;
@@ -339,8 +356,10 @@ void setup() {
       
           dispPage = cfg.default_page;
           setPageIconPos(dispPage);
+          
           // stat startup time
           msStart = millis();
+          
           // update glycemia now
           msCount = msStart-16000;
 
@@ -371,72 +390,6 @@ void drawArrow(int x, int y, int asize, int aangle, int pwidth, int plength, uin
   M5.Lcd.drawLine(x, y+2, xx1, yy1+2, color);
   M5.Lcd.drawLine(x-2, y, xx1-2, yy1, color);
   M5.Lcd.drawLine(x, y-2, xx1, yy1-2, color);
-}
-
-struct NSinfo {
-  char sensDev[64];
-  uint64_t rawtime = 0;
-  time_t sensTime = 0;
-  struct tm sensTm;
-  char sensDir[32];
-  float sensSgvMgDl = 0;
-  float sensSgv = 0;
-  float last10sgv[10];
-  bool is_xDrip = 0;  
-  int arrowAngle = 180;
-  int delta_absolute = 0;
-  float delta_elapsedMins = 0;
-  bool delta_interpolated = 0;
-  int delta_mean5MinsAgo = 0;
-  int delta_mgdl = 0;
-  float delta_scaled = 0;
-  char delta_display[16];
-  char loop_display_symbol = '?';
-  char loop_display_code[16];
-  char loop_display_label[16];
-  char basal_display[16];
-  float basal_current = 0;
-  float basal_tempbasal = 0;
-  float basal_combobolusbasal = 0;
-  float basal_totalbasal = 0;
-} ns;
-
-void drawMiniGraph(struct NSinfo *ns){
-
-  int i;
-  float glk;
-  uint16_t sgvColor;
-  // M5.Lcd.drawLine(231, 110, 319, 110, TFT_DARKGREY);
-  // M5.Lcd.drawLine(231, 110, 231, 207, TFT_DARKGREY);
-  // M5.Lcd.drawLine(231, 207, 319, 207, TFT_DARKGREY);
-  // M5.Lcd.drawLine(319, 110, 319, 207, TFT_DARKGREY);
-  M5.Lcd.drawLine(231, 113, 319, 113, TFT_LIGHTGREY);
-  M5.Lcd.drawLine(231, 203, 319, 203, TFT_LIGHTGREY);
-  M5.Lcd.drawLine(231, 200-(4-3)*10+3, 319, 200-(4-3)*10+3, TFT_LIGHTGREY);
-  M5.Lcd.drawLine(231, 200-(9-3)*10+3, 319, 200-(9-3)*10+3, TFT_LIGHTGREY);
-  Serial.print("Last 10 values: ");
-  for(i=9; i>=0; i--) {
-    sgvColor = TFT_GREEN;
-    glk = *(ns->last10sgv+9-i);
-    if(glk>12) {
-      glk = 12;
-    } else {
-      if(glk<3) {
-        glk = 3;
-      }
-    }
-    if(glk<cfg.red_low || glk>cfg.red_high) {
-      sgvColor = TFT_RED;
-    } else {
-      if(glk<cfg.yellow_low || glk>cfg.yellow_high) {
-        sgvColor = TFT_YELLOW;
-      }
-    }
-    Serial.print(*(ns->last10sgv+i)); Serial.print(" ");
-    if(*(ns->last10sgv+9-i)!=0)
-      M5.Lcd.fillCircle(234+i*9, 203-(glk-3.0)*10.0, 3, sgvColor);
-  }
-  Serial.println();
 }
 
 int readNightscout(char *url, char *token, struct NSinfo *ns) {
@@ -602,124 +555,6 @@ void update_glycemia() {
   M5.Lcd.setCursor(0, 0);
 
   switch(dispPage) {
-    case 0: {
-      readNightscout(cfg.url, cfg.token, &ns);
-
-      M5.Lcd.setFreeFont(FSSB12);
-      M5.Lcd.setTextSize(1);
-      M5.Lcd.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-      char datetimeStr[30];
-      struct tm timeinfo;
-      if(cfg.show_current_time) {
-        if(getLocalTime(&timeinfo)) {
-          sprintf(datetimeStr, "%02d:%02d  %d.%d.  ", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_mday, timeinfo.tm_mon+1);  
-        } else {
-          strcpy(datetimeStr, "??:??");
-        }
-      } else {
-        sprintf(datetimeStr, "%02d:%02d  %d.%d.  ", ns.sensTm.tm_hour, ns.sensTm.tm_min, ns.sensTm.tm_mday, ns.sensTm.tm_mon+1);
-      }
-      M5.Lcd.drawString(datetimeStr, 0, 0, GFXFF);
-
-      if(err_log_ptr>0) {
-        M5.Lcd.fillRect(icon_xpos[0], icon_ypos[0], 16, 16, BLACK);
-        if(err_log_ptr>5)
-          drawIcon(icon_xpos[0], icon_ypos[0], (uint8_t*)warning_icon16x16, TFT_YELLOW);
-        else
-          drawIcon(icon_xpos[0], icon_ypos[0], (uint8_t*)warning_icon16x16, TFT_LIGHTGREY);
-      }
-              
-      M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
-      M5.Lcd.drawString(cfg.userName, 0, 24, GFXFF);
-      
-
-      // show BIG delta below the name
-      M5.Lcd.setFreeFont(FSSB24);
-      M5.Lcd.setTextColor(TFT_LIGHTGREY, BLACK);
-      M5.Lcd.setTextSize(1);
-      M5.Lcd.fillRect(0,48+10,199,47,TFT_BLACK);
-      M5.Lcd.drawString(ns.delta_display, 0, 48+10, GFXFF);
-      M5.Lcd.setFreeFont(FSSB12);
-
-      // calculate sensor time difference
-      int sensorDifSec=0;
-      if(!getLocalTime(&timeinfo)){
-        sensorDifSec=24*60*60; // too much
-      } else {
-        Serial.print("Local time: "); Serial.print(timeinfo.tm_hour); Serial.print(":"); Serial.print(timeinfo.tm_min); Serial.print(":"); Serial.print(timeinfo.tm_sec); Serial.print(" DST "); Serial.println(timeinfo.tm_isdst);
-        sensorDifSec=difftime(mktime(&timeinfo), ns.sensTime);
-      }
-      Serial.print("Sensor time difference = "); Serial.print(sensorDifSec); Serial.println(" sec");
-      unsigned int sensorDifMin = (sensorDifSec+30)/60;
-      uint16_t tdColor = TFT_LIGHTGREY;
-      if(sensorDifMin>5) {
-        tdColor = TFT_WHITE;
-        if(sensorDifMin>15) {
-          tdColor = TFT_RED;
-        }
-      }
-
-      M5.Lcd.fillRoundRect(200,0,120,90,15,tdColor);
-      M5.Lcd.setTextSize(1);
-      M5.Lcd.setFreeFont(FSSB24);
-      M5.Lcd.setTextDatum(MC_DATUM);
-      M5.Lcd.setTextColor(TFT_BLACK, tdColor);
-      if(sensorDifMin>99) {
-        M5.Lcd.drawString("Err", 260, 32, GFXFF);
-      } else {
-        M5.Lcd.drawNumber(sensorDifMin, 260, 32, GFXFF);
-      }
-      M5.Lcd.setTextSize(1);
-      M5.Lcd.setFreeFont(FSSB12);
-      M5.Lcd.setTextDatum(MC_DATUM);
-      M5.Lcd.setTextColor(TFT_BLACK, tdColor);
-      M5.Lcd.drawString("min", 260, 70, GFXFF);
-      
-      uint16_t glColor = TFT_GREEN;
-      if(ns.sensSgv<cfg.yellow_low || ns.sensSgv>cfg.yellow_high) {
-        glColor=TFT_YELLOW; // warning is YELLOW
-      }
-      if(ns.sensSgv<cfg.red_low || ns.sensSgv>cfg.red_high) {
-        glColor=TFT_RED; // alert is RED
-      }
-    
-      sprintf(tmpstr, "Glyk: %4.1f %s", ns.sensSgv, ns.sensDir);
-      Serial.println(tmpstr);
-      
-      M5.Lcd.fillRect(0, 110, 320, 114, TFT_BLACK);
-      M5.Lcd.setTextSize(2);
-      M5.Lcd.setTextDatum(TL_DATUM);
-      M5.Lcd.setTextColor(glColor, TFT_BLACK);
-      char sensSgvStr[30];
-      int smaller_font = 0;
-      if( cfg.show_mgdl ) {
-        sprintf(sensSgvStr, "%3.0f", ns.sensSgvMgDl);
-      } else {
-        sprintf(sensSgvStr, "%4.1f", ns.sensSgv);
-        if( sensSgvStr[0]!=' ' )
-          smaller_font = 1;
-      }
-
-      if( smaller_font ) {
-        M5.Lcd.setFreeFont(FSSB18);
-        M5.Lcd.drawString(sensSgvStr, 0, 130, GFXFF);
-      } else {
-        M5.Lcd.setFreeFont(FSSB24);
-        M5.Lcd.drawString(sensSgvStr, 0, 120, GFXFF);
-      }
-      int tw=M5.Lcd.textWidth(sensSgvStr);
-      int th=M5.Lcd.fontHeight(GFXFF);
-
-    
-      if(ns.arrowAngle!=180)
-        drawArrow(0+tw+25, 120+40, 10, ns.arrowAngle+85, 40, 40, glColor);
-    
-      drawMiniGraph(&ns);
-
-      drawLogWarningIcon();
-    }
-    break;
-    
     case 1: {
       readNightscout(cfg.url, cfg.token, &ns);
       
@@ -855,6 +690,8 @@ void update_glycemia() {
 
 // the loop routine runs over and over again forever
 void loop(){
+
+  
   delay(20);
   buttons_test();
 
@@ -883,25 +720,7 @@ void loop(){
         ESP.restart();
       }
     }
-    if((dispPage==0) && cfg.show_current_time) {
-      // update current time on display
-      M5.Lcd.setFreeFont(FSSB12);
-      M5.Lcd.setTextSize(1);
-      M5.Lcd.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-      if(getLocalTime(&localTimeInfo)) {
-        sprintf(localTimeStr, "%02d:%02d  %d.%d.  ", localTimeInfo.tm_hour, localTimeInfo.tm_min, localTimeInfo.tm_mday, localTimeInfo.tm_mon+1);  
-      } else {
-        strcpy(localTimeStr, "??:??");
-        lastMin = 61;
-      }
-      if(lastMin!=localTimeInfo.tm_min) {
-        lastSec=localTimeInfo.tm_sec;
-        lastMin=localTimeInfo.tm_min;
-        M5.Lcd.drawString(localTimeStr, 0, 0, GFXFF);
-      }
-    }
   }
 
-  // Serial.println("M5.update() and loop again");
   M5.update();
 }
