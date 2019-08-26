@@ -164,11 +164,9 @@ void startupLogo() {
 void printLocalTime() {
   if(!getLocalTime(&localTimeInfo)){
     Serial.println("Failed to obtain time");
-    M5.Lcd.println("Failed to obtain time");
     return;
   }
   Serial.println(&localTimeInfo, "%A, %B %d %Y %H:%M:%S");
-  M5.Lcd.println(&localTimeInfo, "%A, %B %d %Y %H:%M:%S");
 }
 
 void drawIcon(int16_t x, int16_t y, const uint8_t *bitmap, uint16_t color) {
@@ -272,6 +270,7 @@ void wifi_connect() {
 
   if (WiFiMulti.run() != WL_CONNECTED) {
       Serial.println("not connected");
+      yield();
       return;
   }
 
@@ -280,19 +279,8 @@ void wifi_connect() {
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP().toString());
 
-  configTime(cfg.timeZone, cfg.dst, ntpServer, "time.nist.gov", "time.google.com");
-  delay(1000);
-  Serial.print("Waiting for time.");
-  int i = 0;
-  while(!getLocalTime(&localTimeInfo)) {
-    Serial.print(".");
-    delay(1000);
-    i++;
-    if (i > MAX_TIME_RETRY) {
-      Serial.print("Gave up waiting for time to have a valid value.");
-      break;
-    }
-  }
+  setLocalTimeInfo();
+  
   Serial.println();
   printLocalTime();
 
@@ -395,7 +383,7 @@ void drawArrow(int x, int y, int asize, int aangle, int pwidth, int plength, uin
 
 int readNightscout(char *url, char *token, struct NSinfo *ns) {
 
-  Serial.print("In readNightscout");
+  Serial.println("In readNightscout");
   
   HTTPClient http;
   char NSurl[128];
@@ -532,7 +520,7 @@ int readNightscout(char *url, char *token, struct NSinfo *ns) {
       return err;
       
   } else {
-    Serial.print("WiFi not connected");
+    Serial.println("WiFi not connected");
     wifi_connect();
   }
 
@@ -576,6 +564,7 @@ void update_glycemia() {
       
       char sensSgvStr[30];
       strcpy(sensSgvStr, "---");
+      M5.Lcd.setFreeFont(FSSB24);
 
       struct tm timeinfo;
       // if we can't get timeinfo then skip it all
@@ -585,16 +574,16 @@ void update_glycemia() {
         localTimeInSeconds = (unsigned long) localTimeAsLong;
 
         if (localTimeInSeconds > timeStampLatestNightScoutReadingInSeconds + (5 * 60 + 10)) {
+          Serial.println("localTimeInSeconds > timeStampLatestNightScoutReadingInSeconds + (5 * 60 + 10), not showing value");
           // latest nightscout reading is more than 5 minutes old, don't show the value - value is "---"
           M5.Lcd.setFreeFont(FSSB24);
         } else {
                 if( cfg.show_mgdl ) {
+                  M5.Lcd.setFreeFont(FSSB24);
                   if(ns.sensSgvMgDl<100) {
                     sprintf(sensSgvStr, "%2.0f", ns.sensSgvMgDl);
-                    M5.Lcd.setFreeFont(FSSB24);
                   } else {
                     sprintf(sensSgvStr, "%3.0f", ns.sensSgvMgDl);
-                    M5.Lcd.setFreeFont(FSSB24);
                   }
                 } else {
                   if(ns.sensSgv<10) {
@@ -607,6 +596,9 @@ void update_glycemia() {
               }
 
         }
+      } else {
+        Serial.println("could not get local time info");
+        setLocalTimeInfo();
       }
 
       boolean previousEqualToNew = true;
@@ -688,6 +680,8 @@ void update_glycemia() {
 // the loop routine runs over and over again forever
 void loop(){
 
+  Serial.println("in loop");
+
   delay(20);
   buttons_test();
 
@@ -696,8 +690,8 @@ void loop(){
         localTimeInSeconds = (unsigned long) localTimeAsLong;
   }
 
-  // update glycemia every 120 seconds, or if latest reading is more than 2 minutes old, then check every 15 seconds
-  if((millis()-msCount>120000) || ((millis()-msCount>15000) && localTimeInSeconds > 0 && (localTimeInSeconds-timeStampLatestNightScoutReadingInSeconds>120))) {
+  // update glycemia every 120 seconds, or if latest reading is more than 2 minutes old, then check every 15 seconds, or if localTimeInSeconds is still 0
+  if((millis()-msCount>120000) || ((millis()-msCount>5000) && localTimeInSeconds == 0)  || ((millis()-msCount>15000) && localTimeInSeconds > 0 && (localTimeInSeconds-timeStampLatestNightScoutReadingInSeconds>120))) {
     update_glycemia();
     msCount = millis();  
     Serial.print("msCount = "); Serial.println(msCount);
@@ -734,4 +728,28 @@ void printToLCDAndToSerial(String text) {
 void printEmptyLineToLCDAndToSerial() {
    Serial.println();
     M5.Lcd.println("");
+}
+
+void setLocalTimeInfo() {
+
+  if((WiFiMulti.run() != WL_CONNECTED)) {
+    Serial.println("In setLocalTimeInfo but WiFi not connected");
+    return;
+  }
+
+  
+  configTime(cfg.timeZone, cfg.dst, ntpServer, "time.nist.gov", "time.google.com");
+  delay(1000);
+  Serial.print("Waiting for time.");
+  int i = 0;
+  while(!getLocalTime(&localTimeInfo)) {
+    Serial.print(".");
+    delay(1000);
+    i++;
+    if (i > MAX_TIME_RETRY) {
+      Serial.print("Gave up waiting for time to have a valid value.");
+      break;
+    }
+  }
+
 }
