@@ -145,16 +145,6 @@ void readConfiguration(char *iniFilename, tConfig *cfg) {
     cfg->show_mgdl = 0;
   }
 
-  if (ini.getValue("config", "default_page", buffer, bufferLen)) {
-    Serial.print("default_page = ");
-    cfg->default_page = atoi(buffer);
-    Serial.println(cfg->default_page);
-  }
-  else {
-    Serial.println("NO default page defined -> page 0 is default");
-    cfg->default_page = 0;
-  }
-
   if (ini.getValue("config", "restart_at_time", buffer, bufferLen)) {
     Serial.print("restart_at_time = ");
     strlcpy(cfg->restart_at_time, buffer, 10);
@@ -173,16 +163,6 @@ void readConfiguration(char *iniFilename, tConfig *cfg) {
   else {
     Serial.println("NO restart_at_logged_errors defined -> no restarts");
     cfg->restart_at_logged_errors = 0;
-  }
-
-  if (ini.getValue("config", "show_current_time", buffer, bufferLen)) {
-    Serial.print("show_current_time = ");
-    cfg->show_current_time = atoi(buffer);
-    Serial.println(cfg->show_current_time);
-  }
-  else {
-    Serial.println("NO show_current_time defined");
-    cfg->show_current_time = 0;
   }
 
   if (ini.getValue("config", "yellow_low", buffer, bufferLen)) {

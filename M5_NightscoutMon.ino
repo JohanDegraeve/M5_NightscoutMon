@@ -154,10 +154,6 @@ void startupLogo() {
     static uint8_t brightness, pre_brightness;
     M5.Lcd.setBrightness(0);
     if(cfg.bootPic[0]==0) {
-      // M5.Lcd.pushImage(0, 0, 320, 240, (uint16_t *)gImage_logoM5);
-      M5.Lcd.drawString("M5 Stack", 120, 60, GFXFF);
-      M5.Lcd.drawString("Nightscout monitor", 60, 80, GFXFF);
-      M5.Lcd.drawString("(c) 2019 Martin Lukasek", 20, 120, GFXFF);
     } else {
       M5.Lcd.drawJpgFile(SD, cfg.bootPic);
     }
@@ -207,6 +203,10 @@ void buttons_test() {
   if(M5.BtnC.wasPressed()) {
 
     Serial.printf("C");
+
+    // initialize previousSensSgvStr
+    strcpy(previousSensSgvStr, "");
+
     unsigned long btnCPressTime = millis();
     long pwrOffTimeout = 4000;
     int lastDispTime = pwrOffTimeout/1000;
@@ -252,6 +252,7 @@ void wifi_connect() {
 
   if((WiFiMulti.run() == WL_CONNECTED)) {
     Serial.println("In wifi_connect but already connected");
+    return;
   }
   
   WiFi.mode(WIFI_STA);
@@ -303,7 +304,7 @@ void wifi_connect() {
 void setup() {
 
     // initialize previousSensSgvStr
-    strcpy(previousSensSgvStr, "---");
+    strcpy(previousSensSgvStr, "");
     
     // initialize the M5Stack object
     M5.begin();
@@ -393,6 +394,9 @@ void drawArrow(int x, int y, int asize, int aangle, int pwidth, int plength, uin
 }
 
 int readNightscout(char *url, char *token, struct NSinfo *ns) {
+
+  Serial.print("In readNightscout");
+  
   HTTPClient http;
   char NSurl[128];
   int err=0;
@@ -528,7 +532,7 @@ int readNightscout(char *url, char *token, struct NSinfo *ns) {
       return err;
       
   } else {
-    // WiFi not connected
+    Serial.print("WiFi not connected");
     wifi_connect();
   }
 
