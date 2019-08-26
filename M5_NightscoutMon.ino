@@ -213,9 +213,7 @@ void buttons_test() {
     while(M5.BtnC.read()) {
       M5.Lcd.setTextSize(1);
       M5.Lcd.setFreeFont(FSSB12);
-      // M5.Lcd.fillRect(110, 220, 100, 20, TFT_RED);
-      // M5.Lcd.fillRect(0, 220, 320, 20, TFT_RED);
-      M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+      
       int timeToPwrOff = (pwrOffTimeout - (millis()-btnCPressTime))/1000;
       if((lastDispTime!=timeToPwrOff) && (millis()-btnCPressTime>800)) {
         longPress = 1;
@@ -296,6 +294,9 @@ void setup() {
     
     // initialize the M5Stack object
     M5.begin();
+
+    // set text color to white foreground, black background, always
+    M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
     
     // prevent button A "ghost" random presses
     Wire.begin();
@@ -304,7 +305,6 @@ void setup() {
     // Lcd display
     M5.Lcd.setBrightness(100);
     M5.Lcd.fillScreen(BLACK);
-    M5.Lcd.setTextColor(WHITE);
     M5.Lcd.setCursor(0, 0);
     M5.Lcd.setTextSize(2);
     yield();
@@ -543,7 +543,6 @@ void update_glycemia() {
   char tmpstr[255];
   
   M5.Lcd.setTextDatum(TL_DATUM);
-  M5.Lcd.setTextColor(WHITE, BLACK);
   M5.Lcd.setTextSize(1);
   M5.Lcd.setCursor(0, 0);
 
@@ -551,14 +550,6 @@ void update_glycemia() {
     case 1: {
       readNightscout(cfg.url, cfg.token, &ns);
       
-      uint16_t glColor = TFT_GREEN;
-      if(ns.sensSgv<cfg.yellow_low || ns.sensSgv>cfg.yellow_high) {
-        glColor=TFT_YELLOW; // warning is YELLOW
-      }
-      if(ns.sensSgv<cfg.red_low || ns.sensSgv>cfg.red_high) {
-        glColor=TFT_RED; // alert is RED
-      }
-    
       sprintf(tmpstr, "Glyk: %4.1f %s", ns.sensSgv, ns.sensDir);
       Serial.println(tmpstr);
       
@@ -613,7 +604,6 @@ void update_glycemia() {
          M5.Lcd.fillRect(0, 40, 320, 180, TFT_BLACK);
          M5.Lcd.setTextSize(4);
          M5.Lcd.setTextDatum(MC_DATUM);
-         M5.Lcd.setTextColor(glColor, TFT_BLACK);
          M5.Lcd.drawString(sensSgvStr, 160, 120, GFXFF);
         for (int i = 0; i < sizeof(sensSgvStr); i++) {
           previousSensSgvStr[i] = sensSgvStr[i];
@@ -633,23 +623,18 @@ void update_glycemia() {
       M5.Lcd.setTextDatum(TL_DATUM);
       M5.Lcd.setFreeFont(FMB9);
       M5.Lcd.setTextSize(1); 
-      M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
       M5.Lcd.drawString("Date  Time  Error Log", 0, 0, GFXFF);
       // M5.Lcd.drawString("Error", 143, 0, GFXFF);
       M5.Lcd.setFreeFont(FM9);
       if(err_log_ptr==0) {
-        M5.Lcd.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
         M5.Lcd.drawString("no errors in log", 0, 20, GFXFF);
       } else {
         for(int i=0; i<err_log_ptr; i++) {
-          M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
           sprintf(tmpStr, "%02d.%02d.%02d:%02d", err_log[i].err_time.tm_mday, err_log[i].err_time.tm_mon+1, err_log[i].err_time.tm_hour, err_log[i].err_time.tm_min);
           M5.Lcd.drawString(tmpStr, 0, 20+i*18, GFXFF);
           if(err_log[i].err_code<0) {
-            M5.Lcd.setTextColor(TFT_RED, TFT_BLACK);
             strlcpy(tmpStr, http.errorToString(err_log[i].err_code).c_str(), 32);
           } else {
-            M5.Lcd.setTextColor(TFT_YELLOW, TFT_BLACK);
             switch(err_log[i].err_code) {
               case 1001:
                 strcpy(tmpStr, "JSON parsing failed");
@@ -667,7 +652,6 @@ void update_glycemia() {
           M5.Lcd.drawString(tmpStr, 132, 20+i*18, GFXFF);
         }
         M5.Lcd.setFreeFont(FMB9);
-        M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
         sprintf(tmpStr, "Total errors %d", err_log_count);
         M5.Lcd.drawString(tmpStr, 0, 20+err_log_ptr*18, GFXFF);
       }
@@ -680,7 +664,7 @@ void update_glycemia() {
 // the loop routine runs over and over again forever
 void loop(){
 
-  Serial.println("in loop");
+  //Serial.println("in loop");
 
   delay(20);
   buttons_test();
@@ -720,16 +704,6 @@ void loop(){
   M5.update();
 }
 
-void printToLCDAndToSerial(String text) {
-  Serial.println(text);
-  M5.Lcd.println(text);
-}
-
-void printEmptyLineToLCDAndToSerial() {
-   Serial.println();
-    M5.Lcd.println("");
-}
-
 void setLocalTimeInfo() {
 
   if((WiFiMulti.run() != WL_CONNECTED)) {
@@ -740,14 +714,14 @@ void setLocalTimeInfo() {
   
   configTime(cfg.timeZone, cfg.dst, ntpServer, "time.nist.gov", "time.google.com");
   delay(1000);
-  Serial.print("Waiting for time.");
+  Serial.println("Waiting for time.");
   int i = 0;
   while(!getLocalTime(&localTimeInfo)) {
-    Serial.print(".");
+    Serial.println(".");
     delay(1000);
     i++;
     if (i > MAX_TIME_RETRY) {
-      Serial.print("Gave up waiting for time to have a valid value.");
+      Serial.println("Gave up waiting for time to have a valid value.");
       break;
     }
   }
