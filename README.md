@@ -15,5 +15,8 @@ The aim is to have a connection between my iPhone and the M5Stack using Bluetoot
 
 Unused functionality is removed : alarms, iob, ...
 
+To compile, in Arduino IDE set Tools - Partition Scheme - No OTA (Large APP). This is because the BLE library needs a lot of memory
+
 Still in progress
+
 
