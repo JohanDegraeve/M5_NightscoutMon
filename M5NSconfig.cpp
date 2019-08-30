@@ -105,16 +105,6 @@ void readConfiguration(char *iniFilename, tConfig *cfg) {
     cfg->bootPic[0]=0;
   }
   
-  if (ini.getValue("config", "name", buffer, bufferLen)) {
-    Serial.print("name = ");
-    Serial.println(buffer);
-    strlcpy(cfg->userName, buffer, 32);
-  }
-  else {
-    Serial.println("NO user name");
-    strcpy(cfg->userName, " ");
-  }
-  
   if (ini.getValue("config", "time_zone", buffer, bufferLen)) {
     Serial.print("time_zone = ");
     cfg->timeZone = atoi(buffer);
@@ -165,54 +155,6 @@ void readConfiguration(char *iniFilename, tConfig *cfg) {
     cfg->restart_at_logged_errors = 0;
   }
 
-  if (ini.getValue("config", "yellow_low", buffer, bufferLen)) {
-    Serial.print("yellow_low = ");
-    cfg->yellow_low = atof(buffer);
-    if( cfg->show_mgdl )
-      cfg->yellow_low /= 18.0;
-    Serial.println(cfg->yellow_low);
-  }
-  else {
-    Serial.println("NO yellow_low defined");
-    cfg->yellow_low = 4.5;
-  }
-
-  if (ini.getValue("config", "yellow_high", buffer, bufferLen)) {
-    Serial.print("yellow_high = ");
-    cfg->yellow_high = atof(buffer);
-    if( cfg->show_mgdl )
-      cfg->yellow_high /= 18.0;
-    Serial.println(cfg->yellow_high);
-  }
-  else {
-    Serial.println("NO yellow_high defined");
-    cfg->yellow_high = 9.0;
-  }
-
-  if (ini.getValue("config", "red_low", buffer, bufferLen)) {
-    Serial.print("red_low = ");
-    cfg->red_low = atof(buffer);
-    if( cfg->show_mgdl )
-      cfg->red_low /= 18.0;
-    Serial.println(cfg->red_low);
-  }
-  else {
-    Serial.println("NO red_low defined");
-    cfg->red_low = 3.9;
-  }
-
-  if (ini.getValue("config", "red_high", buffer, bufferLen)) {
-    Serial.print("red_high = ");
-    cfg->red_high = atof(buffer);
-    if( cfg->show_mgdl )
-      cfg->red_high /= 18.0;
-    Serial.println(cfg->red_high);
-  }
-  else {
-    Serial.println("NO red_high defined");
-    cfg->red_high = 9.0;
-  }
-
   if (ini.getValue("config", "brightness1", buffer, bufferLen)) {
     Serial.print("brightness1 = ");
     Serial.println(buffer);
@@ -261,12 +203,21 @@ void readConfiguration(char *iniFilename, tConfig *cfg) {
     }
   
     if (ini.getValue(wlansection, "pass", buffer, bufferLen)) {
-      Serial.printf("[wlan%1d] pass = %s\n", i, buffer);
+      Serial.printf("[wlan%1d] password found in config\n", i);
       strlcpy(cfg->wlanpass[i], buffer, 32);
     } else {
-      Serial.printf("NO [wlan%1d] pass\n", i);
+      Serial.printf("NO [wlan%1d] password found\n", i);
       cfg->wlanpass[i][0] = 0;
     }
   }
+
+  if (ini.getValue("config", "blepassword", buffer, bufferLen)) {
+    Serial.print("blepassword found in config\n");
+    strlcpy(cfg->blepassword, buffer, 64);
+  } else {
+    Serial.println("NO blepassword in config\n");
+    // default value , all 0
+  }
+
 
 }
