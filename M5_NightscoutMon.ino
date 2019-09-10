@@ -1,5 +1,8 @@
 /*  M5Stack Nightscout monitor
     Copyright (C) 2019 Johan Degraeve
+
+    Connects to xdripswift via Bluetooth. Receives readings and slope. Shows both on screen.
+    Settings can be configured via xdripswift.
     
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -46,9 +49,9 @@
 #include <BLEServer.h>
 #include <BLE2902.h>
 
-extern const unsigned char door_icon16x16[];
-extern const unsigned char warning_icon16x16[];
-extern const unsigned char wifi1_icon16x16[];
+//extern const unsigned char door_icon16x16[];
+//extern const unsigned char warning_icon16x16[];
+//extern const unsigned char wifi1_icon16x16[];
 extern const unsigned char wifi2_icon16x16[];
 
 Preferences preferences;
@@ -143,6 +146,9 @@ unsigned long localTimeStampInSecondsRetrievedFromBLEClient = 0;
 
 // time in milliseconds since start of the sketch, when timeStampInSecondsRetrievedFromBLEClient was received
 unsigned long milliSecondsSinceRetrievalTimeStampInSecondsRetrievedFromBLEClient = 0;
+
+////// NightScout properties
+char NSurl[128];
 
 /////// FUNCTIONS
 
@@ -246,26 +252,28 @@ void wifi_connect() {
   WiFi.disconnect();
   delay(100);
 
-  Serial.println("WiFi connect start");
+  Serial.println(F("WiFi connect start"));
 
   // We start by connecting to a WiFi network
   for(int i=0; i<=9; i++) {
-    if((cfg.wlanssid[i][0]!=0) && (cfg.wlanpass[i][0]!=0))
+    if((cfg.wlanssid[i][0]!=0) && (cfg.wlanpass[i][0]!=0)) {
+      Serial.println(F("adding wifi to WiFiMulti"));
       WiFiMulti.addAP(cfg.wlanssid[i], cfg.wlanpass[i]);
+    }
   }
 
   
-  Serial.println("Wait for WiFi... ");
+  Serial.println(F("Wait for WiFi... "));
 
   if (WiFiMulti.run() != WL_CONNECTED) {
-      Serial.println("Wifi not connected");
+      Serial.println(F("Wifi not connected"));
       yield();
       return;
   }
 
-  Serial.println("");
-  Serial.println("WiFi connected to SSID "); Serial.println(WiFi.SSID());
-  Serial.println("IP address: ");
+  Serial.println(F(""));
+  Serial.println(F("WiFi connected to SSID ")); Serial.println(WiFi.SSID());
+  Serial.println(F("IP address: "));
   Serial.println(WiFi.localIP().toString());
 
   setLocalTimeInfo();
@@ -273,7 +281,7 @@ void wifi_connect() {
   Serial.println();
   Serial.println(&localTimeInfo, "%A, %B %d %Y %H:%M:%S");
 
-  Serial.println("Connection done");
+  Serial.println(F("Connection done"));
 
 }
 
@@ -300,13 +308,13 @@ void setup() {
     M5.Lcd.setTextSize(2);
     yield();
 
-    Serial.print("Free Heap: "); Serial.println(ESP.getFreeHeap());
+    Serial.print(F("Free Heap: ")); Serial.println(ESP.getFreeHeap());
 
     uint8_t cardType = SD.cardType();
 
     if(cardType == CARD_NONE){
-        Serial.println("No SD card attached");
-        M5.Lcd.println("No SD card attached");
+        Serial.println(F("No SD card attached"));
+        M5.Lcd.println(F("No SD card attached"));
     } else {
       
           readConfiguration(iniFilename, &cfg);
@@ -346,6 +354,8 @@ void setup() {
           // update glycemia now
           msCount = msStart-16000;
 
+          configureTargetServerAndUrl(cfg.url, cfg.token);
+
     }
 
     if (useBLE) {
@@ -353,35 +363,24 @@ void setup() {
     }
 }
 
-int readNightscout(char *url, char *token, struct NSinfo *ns) {
+int readNightscout() {
 
-  Serial.println("In readNightscout");
-  
-  HTTPClient http;
-  char NSurl[128];
   int err=0;
-  char tmpstr[32];
-  
+    
   if((WiFiMulti.run() == WL_CONNECTED)) {
-    // configure target server and url
-    if(strncmp(url, "http", 4))
-      strcpy(NSurl,"https://");
-    else
-      strcpy(NSurl,"");
-    strcat(NSurl,url);
-    strcat(NSurl,"/api/v1/entries.json");
-    if ((token!=NULL) && (strlen(token)>0)){
-      strcat(NSurl,"?token=");
-      strcat(NSurl,token);
-    }
+
+    Serial.println(F("In readNightscout"));
+
+    HTTPClient http;
+    char tmpstr[32];/// DELETE THIS OR CHECK FIRST IF DETAILED DEBUGGING IS ENABLED WITH EXTRA FLAG, TO AVOID THAT THIS GETS ALLOCATED EACH TIME AGAIN AND AGAIN
 
     M5.Lcd.fillRect(icon_xpos[0], icon_ypos[0], 16, 16, BLACK);
     drawIcon(icon_xpos[0], icon_ypos[0], (uint8_t*)wifi2_icon16x16, TFT_BLUE);
     
-    Serial.print("JSON query NSurl = \'");Serial.print(NSurl);Serial.print("\'\n");
+    Serial.print(F("JSON query NSurl = \'"));Serial.print(NSurl);Serial.print(F("\'\n"));
     http.begin(NSurl); //HTTP
     
-    Serial.print("[HTTP] GET...\n");
+    Serial.print(F("[HTTP] GET...\n"));
     // start connection and send HTTP header
     int httpCode = http.GET();
   
@@ -394,12 +393,12 @@ int readNightscout(char *url, char *token, struct NSinfo *ns) {
       if(httpCode == HTTP_CODE_OK) {
         String json = http.getString();
 
-        Serial.print("Free Heap = "); Serial.println(ESP.getFreeHeap());
+        Serial.print(F("Free Heap = ")); Serial.println(ESP.getFreeHeap());
         
         auto JSONerr = deserializeJson(JSONdoc, json);
-        Serial.println("JSON deserialized OK");
+        Serial.println(F("JSON deserialized OK"));
         JsonArray arr=JSONdoc.as<JsonArray>();
-        Serial.print("JSON array size = "); Serial.println(arr.size());
+        Serial.print(F("JSON array size = ")); Serial.println(arr.size());
         if (JSONerr || arr.size()==0) {   //Check for errors in parsing
           if(JSONerr) {
             err=1001; // "JSON parsing failed"
@@ -413,38 +412,38 @@ int readNightscout(char *url, char *token, struct NSinfo *ns) {
           do {
             obj=JSONdoc[sgvindex].as<JsonObject>();
             sgvindex++;
-          } while ((!obj.containsKey("sgv")) && (sgvindex<(arr.size()-1)));
+          } while ((!obj.containsKey(F("sgv"))) && (sgvindex<(arr.size()-1)));
           sgvindex--;
           if(sgvindex<0 || sgvindex>(arr.size()-1))
             sgvindex=0;
 
-          ns->rawtime = JSONdoc[sgvindex]["date"].as<long long>(); // sensTime is time in milliseconds since 1970, something like 1555229938118
-          strlcpy(ns->sensDir, JSONdoc[sgvindex]["direction"] | "N/A", 32);
+          ns.rawtime = JSONdoc[sgvindex][F("date")].as<long long>(); // sensTime is time in milliseconds since 1970, something like 1555229938118
+          strlcpy(ns.sensDir, JSONdoc[sgvindex][F("direction")] | "N/A", 32);
           
-          ns->sensSgv = JSONdoc[sgvindex]["sgv"]; // get value of sensor measurement
-          ns->sensTime = ns->rawtime / 1000; // no milliseconds, since 2000 would be - 946684800, but ok
-          timeStampLatestBgReadingInSeconds = ns->sensTime;   
+          ns.sensSgv = JSONdoc[sgvindex][F("sgv")]; // get value of sensor measurement
+          ns.sensTime = ns.rawtime / 1000; // no milliseconds, since 2000 would be - 946684800, but ok
+          timeStampLatestBgReadingInSeconds = ns.sensTime;   
 
-          ns->sensSgvMgDl = ns->sensSgv;
+          ns.sensSgvMgDl = ns.sensSgv;
           // internally we work in mmol/L
-          ns->sensSgv/=18.0;
+          ns.sensSgv/=18.0;
           
-          localtime_r(&ns->sensTime, &ns->sensTm);
+          localtime_r(&ns.sensTime, &ns.sensTm);
           
           setNsArrowAngle();                                          
 
-          Serial.print("sensTime = ");
-          Serial.print(ns->sensTime);
-          sprintf(tmpstr, " (JSON %lld)", (long long) ns->rawtime);
+          Serial.print(F("sensTime = "));
+          Serial.print(ns.sensTime);
+          sprintf(tmpstr, " (JSON %lld)", (long long) ns.rawtime);
           Serial.print(tmpstr);
-          sprintf(tmpstr, " = %s", ctime(&ns->sensTime));
+          sprintf(tmpstr, " = %s", ctime(&ns.sensTime));
           Serial.print(tmpstr);
-          Serial.print("sensSgv = ");
-          Serial.println(ns->sensSgv);
-          Serial.print("sensDir = ");
-          Serial.println(ns->sensDir);
-          // Serial.print(ns->sensTm.tm_year+1900); Serial.print(" / "); Serial.print(ns->sensTm.tm_mon+1); Serial.print(" / "); Serial.println(ns->sensTm.tm_mday);
-          Serial.print("Sensor time: "); Serial.print(ns->sensTm.tm_hour); Serial.print(":"); Serial.print(ns->sensTm.tm_min); Serial.print(":"); Serial.print(ns->sensTm.tm_sec); Serial.print(" DST "); Serial.println(ns->sensTm.tm_isdst);
+          Serial.print(F("sensSgv = "));
+          Serial.println(ns.sensSgv);
+          Serial.print(F("sensDir = "));
+          Serial.println(ns.sensDir);
+          // Serial.print(ns.sensTm.tm_year+1900); Serial.print(F(" / ")); Serial.print(ns.sensTm.tm_mon+1); Serial.print(F(" / ")); Serial.println(ns.sensTm.tm_mday);
+          Serial.print(F("Sensor time: ")); Serial.print(ns.sensTm.tm_hour); Serial.print(F(":")); Serial.print(ns.sensTm.tm_min); Serial.print(F(":")); Serial.print(ns.sensTm.tm_sec); Serial.print(F(" DST ")); Serial.println(ns.sensTm.tm_isdst);
         } 
       } else {
         addErrorLog(httpCode);
@@ -472,16 +471,6 @@ int readNightscout(char *url, char *token, struct NSinfo *ns) {
   return err;
 }
 
-void drawLogWarningIcon() {
-  if(err_log_ptr>5)
-    drawIcon(icon_xpos[0], icon_ypos[0], (uint8_t*)warning_icon16x16, TFT_YELLOW);
-  else
-    if(err_log_ptr>0)
-      drawIcon(icon_xpos[0], icon_ypos[0], (uint8_t*)warning_icon16x16, TFT_LIGHTGREY);
-    else
-      M5.Lcd.fillRect(icon_xpos[0], icon_ypos[0], 16, 16, BLACK);
-}
-
 void updateGlycemia() {
   char tmpstr[255];
   
@@ -491,7 +480,7 @@ void updateGlycemia() {
 
   switch(dispPage) {
     case 1: {
-      readNightscout(cfg.url, cfg.token, &ns);
+      readNightscout();
       
       sprintf(tmpstr, "Glyk: %4.1f %s", ns.sensSgv, ns.sensDir);
       Serial.println(tmpstr);
@@ -507,11 +496,11 @@ void updateGlycemia() {
         time_t localTimeAsLong = mktime(&localTimeInfo);
         localTimeInSeconds = (unsigned long) localTimeAsLong;
 
-        Serial.print("timeStampLatestBgReadingInSeconds = "); Serial.println(timeStampLatestBgReadingInSeconds);
-        Serial.print("localTimeInSeconds = "); Serial.println(localTimeInSeconds);
+        Serial.print(F("timeStampLatestBgReadingInSeconds = ")); Serial.println(timeStampLatestBgReadingInSeconds);
+        Serial.print(F("localTimeInSeconds = ")); Serial.println(localTimeInSeconds);
 
         if (localTimeInSeconds > timeStampLatestBgReadingInSeconds + (5 * 60 + 10) && ns.sensSgvMgDl > 0) {
-          Serial.println("localTimeInSeconds > timeStampLatestBgReadingInSeconds + (5 * 60 + 10) or ns.sensSgvMgDl == 0, not showing value");
+          Serial.println(F("localTimeInSeconds > timeStampLatestBgReadingInSeconds + (5 * 60 + 10) or ns.sensSgvMgDl == 0, not showing value"));
           // latest nightscout reading is more than 5 minutes old, don't show the value - value is "---"
           M5.Lcd.setFreeFont(FSSB24);
         } else {
@@ -534,7 +523,7 @@ void updateGlycemia() {
 
         }
       } else {
-        Serial.println("could not get local time info");
+        Serial.println(F("could not get local time info"));
         setLocalTimeInfo();
       }
 
@@ -570,7 +559,7 @@ void updateGlycemia() {
         }
       }
     
-      drawLogWarningIcon();
+      //drawLogWarningIcon();
     }
     break;
    
@@ -583,11 +572,11 @@ void updateGlycemia() {
       M5.Lcd.setTextDatum(TL_DATUM);
       M5.Lcd.setFreeFont(FMB9);
       M5.Lcd.setTextSize(1); 
-      M5.Lcd.drawString("Date  Time  Error Log", 0, 0, GFXFF);
+      M5.Lcd.drawString(F("Date  Time  Error Log"), 0, 0, GFXFF);
       // M5.Lcd.drawString("Error", 143, 0, GFXFF);
       M5.Lcd.setFreeFont(FM9);
       if(err_log_ptr==0) {
-        M5.Lcd.drawString("no errors in log", 0, 20, GFXFF);
+        M5.Lcd.drawString(F("no errors in log"), 0, 20, GFXFF);
       } else {
         for(int i=0; i<err_log_ptr; i++) {
           sprintf(tmpStr, "%02d.%02d.%02d:%02d", err_log[i].err_time.tm_mday, err_log[i].err_time.tm_mon+1, err_log[i].err_time.tm_hour, err_log[i].err_time.tm_min);
@@ -624,7 +613,7 @@ void updateGlycemia() {
 // the loop routine runs over and over again forever
 void loop(){
 
-  //Serial.println("in loop");
+  //Serial.println(F("in loop"));
 
   delay(20);
 
@@ -671,14 +660,14 @@ void setLocalTimeInfo() {
   
   configTime(cfg.timeZone, cfg.dst, ntpServer, "time.nist.gov", "time.google.com");
   delay(1000);
-  Serial.println("Waiting for time.");
+  Serial.println(F("Waiting for time."));
   int i = 0;
   while(!getLocalTime(&localTimeInfo)) {
-    Serial.println(".");
+    Serial.println(F("."));
     delay(1000);
     i++;
     if (i > maxRetryToGetLocalTimeNTPOrBle) {
-      Serial.println("Gave up waiting for time to have a valid value.");
+      Serial.println(F("Gave up waiting for time to have a valid value."));
       break;
     }
   }
@@ -686,6 +675,21 @@ void setLocalTimeInfo() {
 }
 
 //////// helper functions
+
+void configureTargetServerAndUrl(char *url, char *token) {
+
+    if(strncmp(url, "http", 4))
+      strcpy(NSurl,"https://");
+    else
+      strcpy(NSurl,"");
+    strcat(NSurl,url);
+    strcat(NSurl,"/api/v1/entries.json");
+    if ((token!=NULL) && (strlen(token)>0)){
+      strcat(NSurl,"?token=");
+      strcat(NSurl,token);
+    }
+  
+}
 
 void setNsArrowAngle() {
             ns.arrowAngle = 180;
@@ -715,9 +719,6 @@ void setNsArrowAngle() {
                                     else 
                                         if(strcmp(ns.sensDir,"NOT COMPUTABLE")==0)
                                           ns.arrowAngle = 180;
-
-Serial.print("ns.arrowangle : ");Serial.println(ns.arrowAngle);
-Serial.print("ns.sensDir : ");Serial.println(ns.sensDir);
 
 }
 
@@ -780,7 +781,7 @@ void sendTextToBLEClient(char * textToSend, uint8_t opCode, int maximumSizeOfTex
                 dataToSend[0] = opCode;
                 dataToSend[1] = 0x01;
                 dataToSend[2] = 0x01;
-                Serial.print("sending opcode ");Serial.print(opCode);Serial.println(" to client");
+                Serial.print(F("sending opcode "));Serial.print(opCode);Serial.println(F(" to client"));
                 pRxTxCharacteristic->setValue(dataToSend, 3);
                 pRxTxCharacteristic->notify();
                 return;
@@ -819,7 +820,7 @@ void sendTextToBLEClient(char * textToSend, uint8_t opCode, int maximumSizeOfTex
                 }
 
                 // send the data
-                Serial.print("sending packet ");Serial.print(numberOfNextPacketToSend);Serial.print(" for text ");Serial.print(textToSend);Serial.print(" with opcode ");Serial.print(opCode);Serial.println(" to client");
+                Serial.print(F("sending packet "));Serial.print(numberOfNextPacketToSend);Serial.print(F(" for text "));Serial.print(textToSend);Serial.print(F(" with opcode "));Serial.print(opCode);Serial.println(F(" to client"));
                 pRxTxCharacteristic->setValue(dataToSend, sizeOfNextPacketToSend);
                 pRxTxCharacteristic->notify();
 
@@ -849,7 +850,7 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
         // only for logging
         char rxValueAsHexString[rxValue.length() * 2] = "";
         byteArrayToHexString(rxValueAsByteArray, rxValue.length(), rxValueAsHexString);
-        Serial.print("Received Value from BLE client : ");Serial.println(rxValueAsHexString);
+        Serial.print(F("Received Value from BLE client : "));Serial.println(rxValueAsHexString);
 
         // see what server has been sending
         byte opCode = rxValueAsByteArray[0];
@@ -858,44 +859,44 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
           /// codes for writing from client to server         
           
           case 0x01:
-             Serial.println("received opcode for writeNightScoutUrlTx");
+             Serial.println(F("received opcode for writeNightScoutUrlTx"));
           break;
           
           case 0x02:
-             Serial.println("received opcode for writeNightScoutTokenTx");
+             Serial.println(F("received opcode for writeNightScoutTokenTx"));
           break;
           
           case 0x03:
-             Serial.println("received opcode for writemgdlTx");
+             Serial.println(F("received opcode for writemgdlTx"));
           break;
           
           case 0x04:
-             Serial.println("received opcode for writebrightness1Tx");
+             Serial.println(F("received opcode for writebrightness1Tx"));
           break;
           
           case 0x05:
-             Serial.println("received opcode for writebrightness2Tx");
+             Serial.println(F("received opcode for writebrightness2Tx"));
           break;
           
           case 0x06:
-             Serial.println("received opcode for writebrightness3Tx");
+             Serial.println(F("received opcode for writebrightness3Tx"));
           break;
           
           case 0x07:
-             Serial.println("received opcode for writeWlanSSIDTx");
+             Serial.println(F("received opcode for writeWlanSSIDTx"));
           break;
           
           case 0x08:
-             Serial.println("received opcode for writeWlanPassTx");
+             Serial.println(F("received opcode for writeWlanPassTx"));
           break;
 
           case 0x09: {
-             Serial.println("received opcode for readBlePassWordTx");
+             Serial.println(F("received opcode for readBlePassWordTx"));
 
              // client is requesting the blepassword - if cfg.blepassword has length > 0, then it means it should already be known by the app, we won't send it. 
              // this is to prevent that some other app requests it
              if (sizeOfStringInCharArray(cfg.blepassword, 64) == 0) {// here in this case useConfiguredBlePassword must be false
-               Serial.println("current blepassword has length 0, creating a new one and will send this to client");
+               Serial.println(F("current blepassword has length 0, creating a new one and will send this to client"));
                for(int i = 0; i<10  ; i++) {
                  cfg.blepassword[i] = letters[random(0, 36)];
                }
@@ -906,22 +907,22 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
                bleAuthenticated = true;
                
              } else if (useConfiguredBlePassword) {
-                Serial.println("'Error - 1 -  User should set password in settings', sending 0x0D to client");
+                Serial.println(F("'Error - 1 -  User should set password in settings', sending 0x0D to client"));
                 sendTextToBLEClient("", 0x0D, 0);
                 
              } else { // useConfiguredBlePassword is false and cfg.blepassword already exists, means it's already randomly generated
-                Serial.println("blepassword has length > 0, 'Error - 2 - Password already known, user should reset M5Stack', sending 0x0F to client");
+                Serial.println(F("blepassword has length > 0, 'Error - 2 - Password already known, user should reset M5Stack', sending 0x0F to client"));
                 sendTextToBLEClient("", 0x0F, 0);
              }
           }
           break;
           
           case 0x0A: {//authenticateTx
-             Serial.println("received opcode for authenticateTx");
+             Serial.println(F("received opcode for authenticateTx"));
              // client is trying authentication, in case cfg.blepassword is currently 0, then we're in a situation where there's no password in the config, a new random password hasn't been
              // generated yet, the app still has an old stored temporary password, but which needs to be renewed
              if (sizeOfStringInCharArray(cfg.blepassword, 64) == 0) {
-                 Serial.println("blepassword has length 0, creating a new one and will send this to client");
+                 Serial.println(F("blepassword has length 0, creating a new one and will send this to client"));
                  for(int i = 0; i<10; i++) {
                     cfg.blepassword[i] = letters[random(0, 36)];
                  }
@@ -934,25 +935,25 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
                // verify the password
                bool passwordMatch = false;
                if ((sizeOfStringInCharArray(cfg.blepassword, 64) + 1) == rxValue.length()) {// rxValue is opCode + password, meaning should be 1 longer than actual password, if that's not the case then password doesn't match
-                Serial.println("password length correct");
+                Serial.println(F("password length correct"));
                 passwordMatch = true;
                  for (int i = 0; i < sizeOfStringInCharArray(cfg.blepassword, 64); i++) {
                     if (cfg.blepassword[i] != rxValueAsByteArray[i+1]) {
                       passwordMatch = false;
-                      Serial.println("password doesn't match");
+                      Serial.println(F("password doesn't match"));
                       break;
                     }
                  }
                } else {
-                  Serial.println("password length not correct");
+                  Serial.println(F("password length not correct"));
                }
 
                 if (passwordMatch) {
-                  Serial.println("sending opcode authenticateSuccessRx to client");
+                  Serial.println(F("sending opcode authenticateSuccessRx to client"));
                   sendTextToBLEClient("", 0x0B, 0);
                   bleAuthenticated = true;
                 } else {
-                  Serial.println("sending opcode authenticateFailureRx to client, user should switch off-on the M5stack or set the right password in the app");
+                  Serial.println(F("sending opcode authenticateFailureRx to client, user should switch off-on the M5stack or set the right password in the app"));
                   sendTextToBLEClient("", 0x0C, 0);
                   
                   // disconnect because it may be an untrusted device that is trying to connect
@@ -969,7 +970,7 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
              break;
 
              case 0x10: {
-                Serial.println("received opcode for bgReadingTx");
+                Serial.println(F("received opcode for bgReadingTx"));
                 // should be one packet, will not start to compose packets, string starts at byte 3 (ie index 2), here it's multiplied with 2
 
                 if (bleAuthenticated) {
@@ -986,7 +987,7 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
                     // strange but this assigned splitByBlanc to the next field
                     splitByBlanc = strtok (NULL," ");
                     ns.rawtime = uint64_t(strtoul(splitByBlanc, NULL, 10)) * 1000;
-                    /*Serial.print("rawtime = ");char tmpstr[32];sprintf(tmpstr, "%lld", (long long) rawtime);Serial.println(tmpstr);*/
+                    /*Serial.print(F("rawtime = ");char tmpstr[32];sprintf(tmpstr, "%lld", (long long) rawtime);Serial.println(tmpstr);*/
                     
                     ns.sensTime = ns.rawtime / 1000; 
                     timeStampLatestBgReadingInSeconds = ns.sensTime; 
@@ -1001,13 +1002,13 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
                     delete[] cstr;
                     
                 } else {
-                    Serial.println("BLE Not authenticated");
+                    Serial.println(F("BLE Not authenticated"));
                 }
              }
              break;
 
              case 0x12: {
-                Serial.println("received opcode for writeTimeStampTx");
+                Serial.println(F("received opcode for writeTimeStampTx"));
                 // should be one packet, will not start to compose packets, string starts at byte 3 (ie index 2), here it's multiplied with 2
 
                 if (bleAuthenticated) {
@@ -1019,7 +1020,7 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
              break;
 
              case 0x13: {
-                Serial.println("received opcode for writeSlopeNameTx");
+                Serial.println(F("received opcode for writeSlopeNameTx"));
                 if (bleAuthenticated) {
                   strlcpy(ns.sensDir, rxValue.c_str() + 3, 32); 
                   setNsArrowAngle();  
@@ -1031,18 +1032,19 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
           }
           
         }
+        
       }
     }
 };
 
 class BLEServerCallBack: public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) {
-      Serial.println("BLE connect");
+      Serial.println(F("BLE connect"));
       bleDeviceConnected = true;
     };
 
     void onDisconnect(BLEServer* pServer) {
-      Serial.println("BLE disconnect");
+      Serial.println(F("BLE disconnect"));
       bleDeviceConnected = false;
 
       // need to set authenticated to false, because the M5Stack will immediately start advertising again, so another client might connect
@@ -1053,7 +1055,7 @@ class BLEServerCallBack: public BLEServerCallbacks {
 void setupBLE() {
   
   Serial.begin(115200);
-  Serial.println("Starting BLE");
+  Serial.println(F("Starting BLE"));
 
   BLEDevice::init(BLE_DeviceName.c_str());
   pServer = BLEDevice::createServer();
