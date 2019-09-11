@@ -435,6 +435,9 @@ int readNightscout() {
           
           setNsArrowAngle();                                          
 
+          // screen should be updated
+          updateGlycemia();
+          
           Serial.print(F("sensTime = "));
           Serial.print(ns.sensTime);
           sprintf(tmpstr, " (JSON %lld)", (long long) ns.rawtime);
@@ -481,7 +484,7 @@ void updateGlycemia() {
 
   switch(dispPage) {
     case 1: {
-      readNightscout();
+      
       
       sprintf(tmpstr, "Glyk: %4.1f %s", ns.sensSgv, ns.sensDir);
       Serial.println(tmpstr);
@@ -618,9 +621,12 @@ void loop(){
 
   unsigned long utcTimeInSeconds = getUTCTimeInSeconds();
 
-  // update glycemia every 120 seconds, or if latest reading is more than 2 minutes old, then check every 15 seconds, or if utcTimeInSeconds is still 0
+  // updateglycemia and call readNightScout every 120 seconds, or if latest reading is more than 2 minutes old, then check every 15 seconds, or if utcTimeInSeconds is still 0
+  // call to updateGlycemia here is only needed to make sure that if there's no recent reading, younger than 5 minutes, to make sure --- is shown
+  // if readNightScout results in a new reading, then this will also call updateGlyecemia
   if((millis()-msCount>120000) || ((millis()-msCount>5000) && utcTimeInSeconds == 0)  || ((millis()-msCount>15000) && utcTimeInSeconds > 0 && (utcTimeInSeconds-timeStampLatestBgReadingInSecondsUTC>120))) {
     updateGlycemia();
+    readNightscout();
     msCount = millis();  
   } else {
     if((cfg.restart_at_logged_errors>0) && (err_log_count>=cfg.restart_at_logged_errors)) {
