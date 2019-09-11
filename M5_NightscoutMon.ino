@@ -49,6 +49,9 @@
 #include <BLEServer.h>
 #include <BLE2902.h>
 
+// if debuglogging then there's more logging, haha
+const bool debugLogging = false;
+
 extern const unsigned char wifi2_icon16x16[];
 
 Preferences preferences;
@@ -487,7 +490,6 @@ void updateGlycemia() {
   switch(dispPage) {
     case 1: {
       
-      
       sprintf(tmpstr, "Glyk: %4.1f %s", ns.sensSgv, ns.sensDir);
       Serial.println(tmpstr);
       
@@ -504,7 +506,7 @@ void updateGlycemia() {
         Serial.print(F("timeStampLatestBgReadingInSecondsUTC = ")); Serial.println(timeStampLatestBgReadingInSecondsUTC);
         Serial.print(F("utcTimeInSeconds = ")); Serial.println(utcTimeInSeconds);
 
-        if (utcTimeInSeconds > timeStampLatestBgReadingInSecondsUTC + (5 * 60 + 10) && ns.sensSgvMgDl > 0) {
+        if (utcTimeInSeconds > timeStampLatestBgReadingInSecondsUTC + (5 * 60 + 10) || ns.sensSgvMgDl == 0) {
           Serial.println(F("utcTimeInSeconds > timeStampLatestBgReadingInSecondsUTC + (5 * 60 + 10) or ns.sensSgvMgDl == 0, not showing value"));
           // latest nightscout reading is more than 5 minutes old, don't show the value - value is "---"
           M5.Lcd.setFreeFont(FSSB24);
@@ -819,9 +821,11 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
         memcpy(rxValueAsByteArray, rxValue.c_str(), rxValue.length());
 
         // only for logging
-        char rxValueAsHexString[rxValue.length() * 2] = "";
-        byteArrayToHexString(rxValueAsByteArray, rxValue.length(), rxValueAsHexString);
-        Serial.print(F("Received Value from BLE client : "));Serial.println(rxValueAsHexString);
+        if (debugLogging) {
+          char rxValueAsHexString[rxValue.length() * 2] = "";
+          byteArrayToHexString(rxValueAsByteArray, rxValue.length(), rxValueAsHexString);
+          Serial.print(F("Received Value from BLE client : "));Serial.println(rxValueAsHexString);
+        }
 
         // see what server has been sending
         byte opCode = rxValueAsByteArray[0];
