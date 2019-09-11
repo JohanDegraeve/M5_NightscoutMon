@@ -135,26 +135,6 @@ void readConfiguration(char *iniFilename, tConfig *cfg) {
     cfg->show_mgdl = 0;
   }
 
-  if (ini.getValue("config", "restart_at_time", buffer, bufferLen)) {
-    Serial.print("restart_at_time = ");
-    strlcpy(cfg->restart_at_time, buffer, 10);
-    Serial.println(cfg->restart_at_time);
-  }
-  else {
-    Serial.println("NO restart_at_time defined -> no restarts");
-    strcpy(cfg->restart_at_time, "NORES");
-  }
-
-  if (ini.getValue("config", "restart_at_logged_errors", buffer, bufferLen)) {
-    Serial.print("restart_at_logged_errors = ");
-    cfg->restart_at_logged_errors = atoi(buffer);
-    Serial.println(cfg->restart_at_logged_errors);
-  }
-  else {
-    Serial.println("NO restart_at_logged_errors defined -> no restarts");
-    cfg->restart_at_logged_errors = 0;
-  }
-
   if (ini.getValue("config", "brightness1", buffer, bufferLen)) {
     Serial.print("brightness1 = ");
     Serial.println(buffer);

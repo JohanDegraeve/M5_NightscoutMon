@@ -49,19 +49,12 @@
 #include <BLEServer.h>
 #include <BLE2902.h>
 
-//extern const unsigned char door_icon16x16[];
-//extern const unsigned char warning_icon16x16[];
-//extern const unsigned char wifi1_icon16x16[];
 extern const unsigned char wifi2_icon16x16[];
 
 Preferences preferences;
 tConfig cfg;
 
-const char* ntpServer = "pool.ntp.org"; // "time.nist.gov", "time.google.com"
-struct tm localTimeInfo;
-unsigned long localTimeInSeconds = 0;
-int maxRetryToGetLocalTimeNTPOrBle = 30;
-char localTimeStr[30];
+const char * ntpServer = "pool.ntp.org"; // "time.nist.gov", "time.google.com"
 
 struct err_log_item {
   struct tm err_time;
@@ -87,10 +80,11 @@ static char *iniFilename = "/M5NS.INI";
 
 // milliseconds since start of last call to wifi_connect from within nightscout check
 unsigned long milliSecondsSinceLastCallToWifiConnectFromWithinNightScoutcheck = 0;
+
 const unsigned long minimumTimeBetweenTwoCallsToWifiConnectFromWithinNightScoutcheck = 60000;
 
 //timestamp of latest nightscout reading, initially 0
-unsigned long timeStampLatestBgReadingInSeconds = 0;
+unsigned long timeStampLatestBgReadingInSecondsUTC = 0;
 
 // to temporary store the latest shown string, each refresh, it will be checked if it has changed and if not then no redraw, otherwise the screen flickers annoyingly
 char previousSensSgvStr[30];
@@ -132,6 +126,7 @@ const bool useBLE = true;
 // maximum number of bytes to send in one BLE packet
 const int maxBytesInOneBLEPacket = 20;
 
+// will be set to true if we find a blepassword in the ini file
 bool useConfiguredBlePassword = false;
 
 // is authentication done or not, in case not authenticated, we won't accept any reading or anything else
@@ -144,46 +139,71 @@ bool bleAuthenticated = false;
 // local time, in seconds since 1.1.1970 retrieved from client - this value remains fixed once retrieved. Value 0 means not yet retrieved.
 unsigned long localTimeStampInSecondsRetrievedFromBLEClient = 0;
 
+// time difference in seconds, between local time and utc time - to get UTC time, do localTimeStampInSecondsRetrievedFromBLEClient - diffBetweenLocalTimeAndUTCTime
+unsigned long diffBetweenLocalTimeAndUTCTime = 0;
+
 // time in milliseconds since start of the sketch, when timeStampInSecondsRetrievedFromBLEClient was received
 unsigned long milliSecondsSinceRetrievalTimeStampInSecondsRetrievedFromBLEClient = 0;
 
 ////// NightScout properties
+
 char NSurl[128];
 
 /////// FUNCTIONS
 
-// tries to get local time and writes it into dateandtime
-// will first try normal method via ntp server, using getLocalTime
-// if that fails, call setLocalTimeInfo
-bool getLocalTimeNTPOrBle(tm * dateandtime) {
+// local time in seconds since 1.1.1970 , if return value is 0, then failed
+unsigned long getLocalTimeInSeconds() {
 
   /// first try using standard Arduino methods, ie ntp server, if that is successful no further attempts needed
-  if(getLocalTime(dateandtime)) {
-    return true;
+  tm  dateandtime;
+  
+  if (getLocalTime(&dateandtime)) {
+    
+    time_t utcTimeInSeconds = mktime(&dateandtime);
+
+    //Serial.print("utcTimeInSeconds = ");Serial.println(utcTimeInSeconds);
+
+    // if diffBetweenLocalTimeAndUTCTime still 0, then set it now, based on time_zone and dst in config
+    if (diffBetweenLocalTimeAndUTCTime == 0) {
+      // we assume here time_zone and dst are correctly set, which should be the case as getLocalTime was working ok
+      diffBetweenLocalTimeAndUTCTime = (unsigned long)((long)cfg.timeZone + (long)cfg.dst);
+    }
+    
+    return (unsigned long) utcTimeInSeconds + diffBetweenLocalTimeAndUTCTime;
+    
   }
 
   /// try setting up ntp , because this should always be more accurate - this will only work if wifi is on, after that, no matter if succeeded or not we will continue trying to get time from ble client
   /// using ntp
-  setLocalTimeInfo();
+  if((WiFiMulti.run() == WL_CONNECTED)) {
+      configTime(cfg.timeZone, cfg.dst, ntpServer, "time.nist.gov", "time.google.com");
+  }
 
+  
   // meanwhile, check if we already requested timestamp via ble client, if so calculate it and return if not get it also from ble server
   // it is only after having passed here two times, that this can succeed, if localTimeStampInSecondsRetrievedFromBLEClient = 0, and ble is connected then we'll get the time
   if (localTimeStampInSecondsRetrievedFromBLEClient > 0) {
 
-    unsigned long actualLocalTimeInSeconds = localTimeStampInSecondsRetrievedFromBLEClient + (millis() - milliSecondsSinceRetrievalTimeStampInSecondsRetrievedFromBLEClient)/1000;
+    return localTimeStampInSecondsRetrievedFromBLEClient + (millis() - milliSecondsSinceRetrievalTimeStampInSecondsRetrievedFromBLEClient)/1000;
 
-    time_t actualLocalTimeAsTime_t = (time_t)actualLocalTimeInSeconds;
-    dateandtime = localtime(&actualLocalTimeAsTime_t);
-    return true;
   }
 
-  /// using ble, only if connected and authenticated
+  /// using ble, only if connected and authenticated, ask client to send time
   if (bleDeviceConnected && bleAuthenticated && pRxTxCharacteristic != NULL) {
     sendTextToBLEClient("", 0x11, 0);
   }
 
-  return false;
-  
+  return 0;  
+}
+
+// utc time in seconds since 1.1.1970 , if return value is 0, then failed
+unsigned long getUTCTimeInSeconds() {
+  unsigned long localTimeInSeconds = getLocalTimeInSeconds();
+  if (localTimeInSeconds > 0) {
+    return localTimeInSeconds - diffBetweenLocalTimeAndUTCTime;
+  } else {
+    return 0;
+  }
 }
 
 void setPageIconPos(int page) {
@@ -213,20 +233,6 @@ void setPageIconPos(int page) {
       icon_ypos[2] = 0;
       break;
   }
-}
-
-void addErrorLog(int code){
-  if(err_log_ptr>9) {
-    for(int i=0; i<9; i++) {
-      err_log[i].err_time=err_log[i+1].err_time;
-      err_log[i].err_code=err_log[i+1].err_code;
-    }
-    err_log_ptr=9;
-  }
-  getLocalTimeNTPOrBle(&err_log[err_log_ptr].err_time);
-  err_log[err_log_ptr].err_code=code;
-  err_log_ptr++;
-  err_log_count++;
 }
 
 void drawIcon(int16_t x, int16_t y, const uint8_t *bitmap, uint16_t color) {
@@ -276,10 +282,7 @@ void wifi_connect() {
   Serial.println(F("IP address: "));
   Serial.println(WiFi.localIP().toString());
 
-  setLocalTimeInfo();
-  
   Serial.println();
-  Serial.println(&localTimeInfo, "%A, %B %d %Y %H:%M:%S");
 
   Serial.println(F("Connection done"));
 
@@ -405,7 +408,7 @@ int readNightscout() {
           } else {
             err=1002; // "No data from Nightscout"
           }
-          addErrorLog(err);
+
         } else {
           JsonObject obj; 
           int sgvindex = 0;
@@ -422,7 +425,7 @@ int readNightscout() {
           
           ns.sensSgv = JSONdoc[sgvindex][F("sgv")]; // get value of sensor measurement
           ns.sensTime = ns.rawtime / 1000; // no milliseconds, since 2000 would be - 946684800, but ok
-          timeStampLatestBgReadingInSeconds = ns.sensTime;   
+          timeStampLatestBgReadingInSecondsUTC = ns.sensTime;   
 
           ns.sensSgvMgDl = ns.sensSgv;
           // internally we work in mmol/L
@@ -446,11 +449,9 @@ int readNightscout() {
           Serial.print(F("Sensor time: ")); Serial.print(ns.sensTm.tm_hour); Serial.print(F(":")); Serial.print(ns.sensTm.tm_min); Serial.print(F(":")); Serial.print(ns.sensTm.tm_sec); Serial.print(F(" DST ")); Serial.println(ns.sensTm.tm_isdst);
         } 
       } else {
-        addErrorLog(httpCode);
         err=httpCode;
       }
     } else {
-      addErrorLog(httpCode);
       err=httpCode;
     }
     http.end();
@@ -472,7 +473,7 @@ int readNightscout() {
 }
 
 void updateGlycemia() {
-  char tmpstr[255];
+  char tmpstr[255];// MAKE GLOBAL AND AVOID RECREATION each TIME ???
   
   M5.Lcd.setTextDatum(TL_DATUM);
   M5.Lcd.setTextSize(1);
@@ -492,15 +493,14 @@ void updateGlycemia() {
       struct tm timeinfo;
       // if we can't get timeinfo then skip it all
 
-      if (getLocalTimeNTPOrBle(&localTimeInfo)) {
-        time_t localTimeAsLong = mktime(&localTimeInfo);
-        localTimeInSeconds = (unsigned long) localTimeAsLong;
+      unsigned long utcTimeInSeconds = getUTCTimeInSeconds();
+      if (utcTimeInSeconds >  0) {
 
-        Serial.print(F("timeStampLatestBgReadingInSeconds = ")); Serial.println(timeStampLatestBgReadingInSeconds);
-        Serial.print(F("localTimeInSeconds = ")); Serial.println(localTimeInSeconds);
+        Serial.print(F("timeStampLatestBgReadingInSecondsUTC = ")); Serial.println(timeStampLatestBgReadingInSecondsUTC);
+        Serial.print(F("utcTimeInSeconds = ")); Serial.println(utcTimeInSeconds);
 
-        if (localTimeInSeconds > timeStampLatestBgReadingInSeconds + (5 * 60 + 10) && ns.sensSgvMgDl > 0) {
-          Serial.println(F("localTimeInSeconds > timeStampLatestBgReadingInSeconds + (5 * 60 + 10) or ns.sensSgvMgDl == 0, not showing value"));
+        if (utcTimeInSeconds > timeStampLatestBgReadingInSecondsUTC + (5 * 60 + 10) && ns.sensSgvMgDl > 0) {
+          Serial.println(F("utcTimeInSeconds > timeStampLatestBgReadingInSecondsUTC + (5 * 60 + 10) or ns.sensSgvMgDl == 0, not showing value"));
           // latest nightscout reading is more than 5 minutes old, don't show the value - value is "---"
           M5.Lcd.setFreeFont(FSSB24);
         } else {
@@ -524,24 +524,23 @@ void updateGlycemia() {
         }
       } else {
         Serial.println(F("could not get local time info"));
-        setLocalTimeInfo();
       }
 
       boolean previousEqualToNew = true;
       // check if the string to show is new
-      for (int i = 0; i < sizeof(sensSgvStr); i++) {
+      for (int i = 0; i < 30; i++) {
         if (previousSensSgvStr[i] != sensSgvStr[i]) {
           previousEqualToNew = false;
         }
       }
       // if strings is new, then display the new string and copy to previousSensSgvStr
       if (!previousEqualToNew) {
-         M5.Lcd.fillRect(0, 40, 320, 180, TFT_BLACK);
+         M5.Lcd.fillRect(0, 0, 320, 180, TFT_BLACK);
          M5.Lcd.setTextSize(4);
          M5.Lcd.setTextDatum(MC_DATUM);
          M5.Lcd.drawString(sensSgvStr, 160, 120, GFXFF);
 
-         /// test ns.arrowangle
+         /// draw arrow
          int ay=0;
          if(ns.arrowAngle>=45)
             ay=4;
@@ -552,8 +551,8 @@ void updateGlycemia() {
       
         if(ns.arrowAngle!=180)
            drawArrow(280, ay, 10, ns.arrowAngle+85, 28, 28, TFT_WHITE);
-        /// stop test ns.arrowangle
-        
+
+        // copy sensSgvStr to previousSensSgvStr
         for (int i = 0; i < sizeof(sensSgvStr); i++) {
             previousSensSgvStr[i] = sensSgvStr[i];
         }
@@ -617,13 +616,10 @@ void loop(){
 
   delay(20);
 
-  if (getLocalTimeNTPOrBle(&localTimeInfo)) {
-        time_t localTimeAsLong = mktime(&localTimeInfo);
-        localTimeInSeconds = (unsigned long) localTimeAsLong;
-  }
+  unsigned long utcTimeInSeconds = getUTCTimeInSeconds();
 
-  // update glycemia every 120 seconds, or if latest reading is more than 2 minutes old, then check every 15 seconds, or if localTimeInSeconds is still 0
-  if((millis()-msCount>120000) || ((millis()-msCount>5000) && localTimeInSeconds == 0)  || ((millis()-msCount>15000) && localTimeInSeconds > 0 && (localTimeInSeconds-timeStampLatestBgReadingInSeconds>120))) {
+  // update glycemia every 120 seconds, or if latest reading is more than 2 minutes old, then check every 15 seconds, or if utcTimeInSeconds is still 0
+  if((millis()-msCount>120000) || ((millis()-msCount>5000) && utcTimeInSeconds == 0)  || ((millis()-msCount>15000) && utcTimeInSeconds > 0 && (utcTimeInSeconds-timeStampLatestBgReadingInSecondsUTC>120))) {
     updateGlycemia();
     msCount = millis();  
   } else {
@@ -633,45 +629,10 @@ void loop(){
       preferences.end();
       ESP.restart();
     }
-    char lastResetTime[10];
-    strcpy(lastResetTime, "Unknown");
-    if(getLocalTimeNTPOrBle(&localTimeInfo)) {
-      sprintf(localTimeStr, "%02d:%02d", localTimeInfo.tm_hour, localTimeInfo.tm_min);
-      // no soft restart less than 5 minutes from last restart to prevent several restarts in the same minute
-      if((millis()-msStart>300000) && (strcmp(cfg.restart_at_time, localTimeStr)==0)) {
-        preferences.begin("M5StackNS", false);
-        preferences.putBool("SoftReset", true);
 
-        preferences.end();
-        ESP.restart();
-      }
-    }
   }
 
   M5.update();
-}
-
-void setLocalTimeInfo() {
-
-  if((WiFiMulti.run() != WL_CONNECTED)) {
-    return;
-  }
-
-  
-  configTime(cfg.timeZone, cfg.dst, ntpServer, "time.nist.gov", "time.google.com");
-  delay(1000);
-  Serial.println(F("Waiting for time."));
-  int i = 0;
-  while(!getLocalTime(&localTimeInfo)) {
-    Serial.println(F("."));
-    delay(1000);
-    i++;
-    if (i > maxRetryToGetLocalTimeNTPOrBle) {
-      Serial.println(F("Gave up waiting for time to have a valid value."));
-      break;
-    }
-  }
-
 }
 
 //////// helper functions
@@ -990,7 +951,7 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
                     /*Serial.print(F("rawtime = ");char tmpstr[32];sprintf(tmpstr, "%lld", (long long) rawtime);Serial.println(tmpstr);*/
                     
                     ns.sensTime = ns.rawtime / 1000; 
-                    timeStampLatestBgReadingInSeconds = ns.sensTime; 
+                    timeStampLatestBgReadingInSecondsUTC = ns.sensTime; 
                     ns.sensSgvMgDl = ns.sensSgv;
                     ns.sensSgv/=18.0;
                     localtime_r(&ns.sensTime, &ns.sensTm);
@@ -1026,6 +987,14 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
                   setNsArrowAngle();  
                 }
                 
+             }
+             break;
+
+             case 0x14: {
+                Serial.println(F("received opcode for writeTimeOffsetTx"));
+                if (bleAuthenticated) {
+                  diffBetweenLocalTimeAndUTCTime = strtoul(rxValue.c_str() + 3, NULL, 0);
+                }
              }
              break;
              

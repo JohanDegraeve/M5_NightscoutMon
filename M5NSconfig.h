@@ -13,7 +13,6 @@ struct tConfig {
   int dst = 0; // DST time offset in hours, must be corrected for internatinal use and DST
   int show_mgdl = 0; // 0 = display mg/DL, 1 = diplay mmol/L
   int default_page = 0; // page number displayed after startup
-  char restart_at_time[10]; // time in HH:MM format when the device will restart
   int restart_at_logged_errors = 0; // restart device after particular number of errors in the log (0 = do not restart)
   int show_current_time = 0; // show currnet time instead of last valid data time_
   int info_line = 1; // 0 = sensor info, 1 = button function icons, 2 = loop info + basal
