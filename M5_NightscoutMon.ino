@@ -145,6 +145,9 @@ unsigned long diffBetweenLocalTimeAndUTCTime = 0;
 // time in milliseconds since start of the sketch, when timeStampInSecondsRetrievedFromBLEClient was received
 unsigned long milliSecondsSinceRetrievalTimeStampInSecondsRetrievedFromBLEClient = 0;
 
+// will hold value received from BLE client, defined here once to avoid heap fragmentation
+byte rxValueAsByteArray[maxBytesInOneBLEPacket];
+
 ////// NightScout properties
 
 char NSurl[128];
@@ -263,7 +266,6 @@ void wifi_connect() {
   // We start by connecting to a WiFi network
   for(int i=0; i<=9; i++) {
     if((cfg.wlanssid[i][0]!=0) && (cfg.wlanpass[i][0]!=0)) {
-      Serial.println(F("adding wifi to WiFiMulti"));
       WiFiMulti.addAP(cfg.wlanssid[i], cfg.wlanpass[i]);
     }
   }
@@ -811,7 +813,9 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
 
     if (rxValue.length() > 0) {
         
-        byte rxValueAsByteArray[rxValue.length()];
+        for (int i = 0; i < maxBytesInOneBLEPacket;i++) {
+          rxValueAsByteArray[i] = 0x00;
+        }
         memcpy(rxValueAsByteArray, rxValue.c_str(), rxValue.length());
 
         // only for logging
