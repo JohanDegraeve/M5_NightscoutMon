@@ -535,7 +535,7 @@ void updateGlycemia() {
       }
       // if strings is new, then display the new string and copy to previousSensSgvStr
       if (!previousEqualToNew) {
-         M5.Lcd.fillRect(0, 0, 320, 180, TFT_BLACK);
+         M5.Lcd.fillRect(0, 0, 320, 240, TFT_BLACK);
          M5.Lcd.setTextSize(4);
          M5.Lcd.setTextDatum(MC_DATUM);
          M5.Lcd.drawString(sensSgvStr, 160, 120, GFXFF);
