@@ -50,7 +50,7 @@
 #include <BLE2902.h>
 
 // if debuglogging then there's more logging, haha
-const bool debugLogging = false;
+const bool debugLogging = true;
 
 extern const unsigned char wifi2_icon16x16[];
 
@@ -80,6 +80,7 @@ unsigned long msCount;
 unsigned long msStart;
 static uint8_t lcdBrightness = 10;
 static char *iniFilename = "/M5NS.INI";
+static uint16_t textColor = TFT_WHITE;
 
 // milliseconds since start of last call to wifi_connect from within nightscout check
 unsigned long milliSecondsSinceLastCallToWifiConnectFromWithinNightScoutcheck = 0;
@@ -116,7 +117,7 @@ bool bleDeviceConnected = false;
 uint8_t txValue = 0;
 
 // device name that BLE client will see when scanning
-const String BLE_DeviceName = "M5_NightscoutMon";
+const String BLE_DeviceName = "M5Stack";
 
 // service and characteristic uuid for ble
 // characteristic will be used for read and write
@@ -134,6 +135,9 @@ bool useConfiguredBlePassword = false;
 
 // is authentication done or not, in case not authenticated, we won't accept any reading or anything else
 bool bleAuthenticated = false;
+
+// will be set to false as soon as BLE setup is fully finished
+bool initialBLEStartUpOnGoing = true;
 
 ///// as we may work without wifi, we need to be able to set the time, we can use BLE client for that. Following variable tell us if we've already retrieved the time from the server
 ///// and also the moment when retrieved is noted as the number of milliseconds since start 
@@ -160,9 +164,23 @@ char NSurl[128];
 // local time in seconds since 1.1.1970 , if return value is 0, then failed
 unsigned long getLocalTimeInSeconds() {
 
-  /// first try using standard Arduino methods, ie ntp server, if that is successful no further attempts needed
+  // Start by trying timestamp received from BLE client, if so calculate it and return if not get it  from ble server
+  // it is only after having passed here two times, that this can succeed, if localTimeStampInSecondsRetrievedFromBLEClient = 0, and ble is connected then we'll get the time
+  if (localTimeStampInSecondsRetrievedFromBLEClient > 0) {
+
+    return localTimeStampInSecondsRetrievedFromBLEClient + (millis() - milliSecondsSinceRetrievalTimeStampInSecondsRetrievedFromBLEClient)/1000;
+
+  }
+
+  /// using ble, only if connected and authenticated, ask client to send time
+  if (bleDeviceConnected && bleAuthenticated && pRxTxCharacteristic != NULL) {
+    sendTextToBLEClient("", 0x11, 0);
+  }
+
+
+  /// next try using standard Arduino methods, ie ntp server
   tm  dateandtime;
-  
+
   if (getLocalTime(&dateandtime)) {
     
     time_t utcTimeInSeconds = mktime(&dateandtime);
@@ -179,26 +197,13 @@ unsigned long getLocalTimeInSeconds() {
     
   }
 
-  /// try setting up ntp , because this should always be more accurate - this will only work if wifi is on, after that, no matter if succeeded or not we will continue trying to get time from ble client
+  /// try setting up ntp , this will only work if wifi is on, after that, no matter if succeeded or not we will continue trying to get time from ble client
   /// using ntp
   if((WiFiMulti.run() == WL_CONNECTED)) {
       configTime(cfg.timeZone, cfg.dst, ntpServer, "time.nist.gov", "time.google.com");
   }
 
   
-  // meanwhile, check if we already requested timestamp via ble client, if so calculate it and return if not get it also from ble server
-  // it is only after having passed here two times, that this can succeed, if localTimeStampInSecondsRetrievedFromBLEClient = 0, and ble is connected then we'll get the time
-  if (localTimeStampInSecondsRetrievedFromBLEClient > 0) {
-
-    return localTimeStampInSecondsRetrievedFromBLEClient + (millis() - milliSecondsSinceRetrievalTimeStampInSecondsRetrievedFromBLEClient)/1000;
-
-  }
-
-  /// using ble, only if connected and authenticated, ask client to send time
-  if (bleDeviceConnected && bleAuthenticated && pRxTxCharacteristic != NULL) {
-    sendTextToBLEClient("", 0x11, 0);
-  }
-
   return 0;  
 }
 
@@ -302,8 +307,8 @@ void setup() {
     // initialize the M5Stack object
     M5.begin();
 
-    // set text color to white foreground, black background, always
-    M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+    // set text color foreground, black background, always
+    M5.Lcd.setTextColor(textColor, TFT_BLACK);
     
     // prevent button A "ghost" random presses
     Wire.begin();
@@ -501,6 +506,7 @@ void updateGlycemia() {
       // if we can't get timeinfo then skip it all
 
       unsigned long utcTimeInSeconds = getUTCTimeInSeconds();
+
       if (utcTimeInSeconds >  0) {
 
         Serial.print(F("timeStampLatestBgReadingInSecondsUTC = ")); Serial.println(timeStampLatestBgReadingInSecondsUTC);
@@ -538,6 +544,7 @@ void updateGlycemia() {
       for (int i = 0; i < 30; i++) {
         if (previousSensSgvStr[i] != sensSgvStr[i]) {
           previousEqualToNew = false;
+          break;
         }
       }
       // if strings is new, then display the new string and copy to previousSensSgvStr
@@ -557,7 +564,7 @@ void updateGlycemia() {
             ay=30;
       
         if(ns.arrowAngle!=180)
-           drawArrow(280, ay, 10, ns.arrowAngle+85, 28, 28, TFT_WHITE);
+           drawArrow(280, ay, 10, ns.arrowAngle+85, 28, 28, textColor);
 
         // copy sensSgvStr to previousSensSgvStr
         for (int i = 0; i < sizeof(sensSgvStr); i++) {
@@ -989,6 +996,12 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
                 if (bleAuthenticated) {
                     localTimeStampInSecondsRetrievedFromBLEClient = strtoul(rxValue.c_str() + 3, NULL, 0);
                     milliSecondsSinceRetrievalTimeStampInSecondsRetrievedFromBLEClient = millis();
+
+                    // ask upate all parameters
+                    Serial.println(F("sending opcode readAllParametersRx to client"));
+                    sendTextToBLEClient("", 0x16, 0);
+
+                    initialBLEStartUpOnGoing = false;
                 }
                 
              }
@@ -1008,6 +1021,23 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
                 Serial.println(F("received opcode for writeTimeOffsetTx"));
                 if (bleAuthenticated) {
                   diffBetweenLocalTimeAndUTCTime = strtoul(rxValue.c_str() + 3, NULL, 0);
+                }
+             }
+             break;
+
+             case 0x15: {
+                Serial.println(F("received opcode for writeTextColorTx"));
+                if (bleAuthenticated) {
+                  
+                    textColor = rxValueAsByteArray[1] * 256 + rxValueAsByteArray[2];
+                    Serial.print(F("textcolor value = "));Serial.println(textColor);
+                    
+                    // reinitialize previousSensSgvStr, to force a redisplay of the screen when calling updateGlycemia
+                    strcpy(previousSensSgvStr, "");
+
+                    // set new textcolor
+                    M5.Lcd.setTextColor(textColor, TFT_BLACK);
+                    updateGlycemia();
                 }
              }
              break;

@@ -95,16 +95,6 @@ void readConfiguration(char *iniFilename, tConfig *cfg) {
   }
   // end Peter Leimbach
 
-  if (ini.getValue("config", "bootpic", buffer, bufferLen)) {
-    Serial.print("bootpic = ");
-    Serial.println(buffer);
-    strlcpy(cfg->bootPic, buffer, 64);
-  }
-  else {
-    Serial.println("NO bootpic");
-    cfg->bootPic[0]=0;
-  }
-  
   if (ini.getValue("config", "time_zone", buffer, bufferLen)) {
     Serial.print("time_zone = ");
     cfg->timeZone = atoi(buffer);
