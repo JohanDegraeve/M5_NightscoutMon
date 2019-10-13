@@ -91,7 +91,8 @@ const unsigned long minimumTimeBetweenTwoCallsToWifiConnectFromWithinNightScoutc
 unsigned long timeStampLatestBgReadingInSecondsUTC = 0;
 
 // to temporary store the latest shown string, each refresh, it will be checked if it has changed and if not then no redraw, otherwise the screen flickers annoyingly
-char previousSensSgvStr[30];
+const int senssgvStringLength = 30;
+char previousSensSgvStr[senssgvStringLength];
 
 DynamicJsonDocument JSONdoc(16384);
 
@@ -174,6 +175,7 @@ unsigned long getLocalTimeInSeconds() {
 
   /// using ble, only if connected and authenticated, ask client to send time
   if (bleDeviceConnected && bleAuthenticated && pRxTxCharacteristic != NULL) {
+    Serial.println(F("Sending opcode readTimeStampRx to client"));
     sendTextToBLEClient("", 0x11, 0);
   }
 
@@ -498,7 +500,7 @@ void updateGlycemia() {
       sprintf(tmpstr, "Glyk: %4.1f %s", ns.sensSgv, ns.sensDir);
       Serial.println(tmpstr);
       
-      char sensSgvStr[30];
+      char sensSgvStr[senssgvStringLength];
       strcpy(sensSgvStr, "---");
       M5.Lcd.setFreeFont(FSSB24);
 
@@ -517,7 +519,7 @@ void updateGlycemia() {
           // latest nightscout reading is more than 5 minutes old, don't show the value - value is "---"
           M5.Lcd.setFreeFont(FSSB24);
         } else {
-                if( cfg.show_mgdl ) {
+                if( cfg.show_mgdl == 0 ) {
                   M5.Lcd.setFreeFont(FSSB24);
                   if(ns.sensSgvMgDl<100) {
                     sprintf(sensSgvStr, "%2.0f", ns.sensSgvMgDl);
@@ -525,10 +527,13 @@ void updateGlycemia() {
                     sprintf(sensSgvStr, "%3.0f", ns.sensSgvMgDl);
                   }
                 } else {
+                  Serial.println("before checking ns.sensSgv");
                   if(ns.sensSgv<10) {
+                    Serial.println("ns.sensSgv < 10");
                   sprintf(sensSgvStr, "%3.1f", ns.sensSgv);
                   M5.Lcd.setFreeFont(FSSB24);
                 } else {
+                  Serial.println("ns.sensSgv >= 10");
                   sprintf(sensSgvStr, "%4.1f", ns.sensSgv);
                   M5.Lcd.setFreeFont(FSSB18);
                 }
@@ -541,10 +546,11 @@ void updateGlycemia() {
 
       boolean previousEqualToNew = true;
       // check if the string to show is new
-      for (int i = 0; i < 30; i++) {
-        if (previousSensSgvStr[i] != sensSgvStr[i]) {
+      if (strlen(sensSgvStr) != strlen(previousSensSgvStr)) {
+        previousEqualToNew = false;
+      } else {
+        if (strcmp(previousSensSgvStr, sensSgvStr) != 0) {
           previousEqualToNew = false;
-          break;
         }
       }
       // if strings is new, then display the new string and copy to previousSensSgvStr
@@ -567,7 +573,7 @@ void updateGlycemia() {
            drawArrow(280, ay, 10, ns.arrowAngle+85, 28, 28, textColor);
 
         // copy sensSgvStr to previousSensSgvStr
-        for (int i = 0; i < sizeof(sensSgvStr); i++) {
+        for (int i = 0; i < senssgvStringLength; i++) {
             previousSensSgvStr[i] = sensSgvStr[i];
         }
       }
@@ -759,7 +765,6 @@ void sendTextToBLEClient(char * textToSend, uint8_t opCode, int maximumSizeOfTex
                 dataToSend[0] = opCode;
                 dataToSend[1] = 0x01;
                 dataToSend[2] = 0x01;
-                Serial.print(F("sending opcode "));Serial.print(opCode);Serial.println(F(" to client"));
                 pRxTxCharacteristic->setValue(dataToSend, 3);
                 pRxTxCharacteristic->notify();
                 return;
@@ -797,8 +802,10 @@ void sendTextToBLEClient(char * textToSend, uint8_t opCode, int maximumSizeOfTex
                    dataToSend[i + 3] = uint8_t(textToSend[charactersSent + i]);
                 }
 
-                // send the data
-                Serial.print(F("sending packet "));Serial.print(numberOfNextPacketToSend);Serial.print(F(" for text "));Serial.print(textToSend);Serial.print(F(" with opcode "));Serial.print(opCode);Serial.println(F(" to client"));
+                // send the data 
+                if (debuglogging) {
+                  Serial.print(F("sending packet "));Serial.print(numberOfNextPacketToSend);Serial.print(F(" for text "));Serial.print(textToSend);Serial.print(F(" with opcode "));Serial.print(opCode);Serial.println(F(" to client"));
+                }
                 pRxTxCharacteristic->setValue(dataToSend, sizeOfNextPacketToSend);
                 pRxTxCharacteristic->notify();
 
@@ -840,16 +847,30 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
 
           /// codes for writing from client to server         
           
-          case 0x01:
+          case 0x01:{
              Serial.println(F("received opcode for writeNightScoutUrlTx"));
+             std::strcpy (cfg.url, rxValue.c_str() + 1);
+          }
           break;
           
-          case 0x02:
+          case 0x02:{
              Serial.println(F("received opcode for writeNightScoutTokenTx"));
+             std::strcpy (cfg.token, rxValue.c_str() + 1);
+          }
           break;
           
-          case 0x03:
+          case 0x03:{
+            char * unitismgdl = new char[6];// value is literally "true" or "false"
              Serial.println(F("received opcode for writemgdlTx"));
+             std::strcpy (unitismgdl, rxValue.c_str() + 1);
+             if (strcmp(unitismgdl, "true") == 0) {
+              cfg.show_mgdl = 0;
+             } else {
+              cfg.show_mgdl = 1;
+             }
+             updateGlycemia();
+             delete[] unitismgdl;
+          }
           break;
           
           case 0x04:
@@ -864,12 +885,18 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
              Serial.println(F("received opcode for writebrightness3Tx"));
           break;
           
-          case 0x07:
+          case 0x07: {
              Serial.println(F("received opcode for writeWlanSSIDTx"));
+             // wifi name starts at index 2, index 1 is the number of the wifi to be set
+             std::strcpy (cfg.wlanssid[rxValue[1]], rxValue.c_str() + 2);
+          }
           break;
           
-          case 0x08:
+          case 0x08:{
              Serial.println(F("received opcode for writeWlanPassTx"));
+             // wifi name starts at index 2, index 1 is the number of the wifi to be set
+             std::strcpy (cfg.wlanpass[rxValue[1]], rxValue.c_str() + 2);
+          }
           break;
 
           case 0x09: {
@@ -969,7 +996,6 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
                     // strange but this assigned splitByBlanc to the next field
                     splitByBlanc = strtok (NULL," ");
                     ns.rawtime = uint64_t(strtoul(splitByBlanc, NULL, 10)) * 1000;
-                    /*Serial.print(F("rawtime = ");char tmpstr[32];sprintf(tmpstr, "%lld", (long long) rawtime);Serial.println(tmpstr);*/
                     
                     ns.sensTime = ns.rawtime / 1000; 
                     timeStampLatestBgReadingInSecondsUTC = ns.sensTime; 
@@ -997,11 +1023,13 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
                     localTimeStampInSecondsRetrievedFromBLEClient = strtoul(rxValue.c_str() + 3, NULL, 0);
                     milliSecondsSinceRetrievalTimeStampInSecondsRetrievedFromBLEClient = millis();
 
-                    // ask upate all parameters
-                    Serial.println(F("sending opcode readAllParametersRx to client"));
-                    sendTextToBLEClient("", 0x16, 0);
+                    if (initialBLEStartUpOnGoing) {
+                      // ask upate all parameters
+                      Serial.println(F("sending opcode readAllParametersRx to client"));
+                      sendTextToBLEClient("", 0x16, 0);
 
-                    initialBLEStartUpOnGoing = false;
+                      initialBLEStartUpOnGoing = false;
+                    }
                 }
                 
              }
@@ -1045,7 +1073,6 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
           }
           
         }
-        
       }
     }
 };
