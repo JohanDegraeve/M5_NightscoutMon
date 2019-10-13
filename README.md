@@ -1,3 +1,5 @@
+
+# UNDER DEVELOPMENT ! NOT YET READY !!
 # M5_NightscoutMon with bluetooth connection with xdrip for iOS
 ## M5Stack Nightscout monitor
 ### Intro
@@ -14,7 +16,7 @@ I recommend to first read https://github.com/mlukasek/M5_NightscoutMon
 
 ### What is available in this project
 
-There's only one screen, which the value and an arrow. Always the same color. A bluetooth connection can be made with an iOS device that has xdrip installed : https://github.com/JohanDegraeve/xdripswift. The iOS device can send readings directly to the M5Stack, but the M5Stack can also download readings from NightScout
+There's only one screen, with the bloodglucose value and an arrow. Always the same color. A bluetooth connection can be made with an iOS device that has xdrip installed : https://github.com/JohanDegraeve/xdripswift. The iOS device can send readings directly to the M5Stack, but the M5Stack can also download readings from NightScout - a microSD card can be installed but is not required (see further on)
 
 With xdrip one can
  * Scan for and connect to multiple M5Stacks. It's ony been tested with one for now, more tests are planned with two M5Stacks
@@ -37,5 +39,12 @@ See the page created by Martin Lukasek <martin@lukasek.cz> https://github.com/ml
 ### microSD card
 
 The M5Stack can work without microSD card and without the M5NS.INI file. If the file is missing, then whenever the M5Stack restarts, xdrip will need to be connected to configure the required parameters
+
+### authentication - passwords
+
+There's no strong security implemented. Just to avoid that someone else (my neighbour) connects to my M5Stack and starts sending readings, there's some authentication: xDrip (on iOS device) needs to authenticate itself towards the M5Stack.
+There's two options :
+* a fixed password : in this case a micro SD card must be used in the M5Stack, the ini file must have a password must be stored in the variable blepassword. Each iOS device that has xdrip installed (usually there's only one but you may have more), must have the same password configured in the Settings (see Settings - M5Stack)
+* a random password : if there's no parameter named blepassword configured in the ini file, then at each startup, and the first time it connects to xDrip, it will generate a random password and send this to xdrip. You can see it in the M5Stack settings. If every there's a disconnect and a reconnect, the xdrip app must authenticate with this password
 
 
