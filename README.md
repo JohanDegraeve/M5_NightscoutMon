@@ -1,4 +1,4 @@
-# M5_NightscoutMon - bluetooth connection with xdrip for iOS
+# M5_NightscoutMon with bluetooth connection with xdrip for iOS
 ## M5Stack Nightscout monitor
 ### Intro
 ##### M5Stack Nightscout monitor<br/>Copyright (C) Johan Degraeve 
