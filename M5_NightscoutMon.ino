@@ -49,8 +49,8 @@
 #include <BLEServer.h>
 #include <BLE2902.h>
 
-// if debuglogging then there's more logging, haha
-const bool debugLogging = true;
+// if debugLogging then there's more logging, haha
+const bool debugLogging = false;
 
 extern const unsigned char wifi2_icon16x16[];
 
@@ -82,7 +82,7 @@ static uint8_t lcdBrightness = 10;
 static char *iniFilename = "/M5NS.INI";
 static uint16_t textColor = TFT_WHITE;
 
-// milliseconds since start of last call to wifi_connect from within nightscout check
+// milliseconds since start of last call to connectToWiFiIfNightScoutUrlExists from within nightscout check
 unsigned long milliSecondsSinceLastCallToWifiConnectFromWithinNightScoutcheck = 0;
 
 const unsigned long minimumTimeBetweenTwoCallsToWifiConnectFromWithinNightScoutcheck = 60000;
@@ -144,17 +144,21 @@ bool initialBLEStartUpOnGoing = true;
 ///// and also the moment when retrieved is noted as the number of milliseconds since start 
 ///// we retrieve the local time, so we don't need to care about timezone, daylight savings etc.
 
-// local time, in seconds since 1.1.1970 retrieved from client - this value remains fixed once retrieved. Value 0 means not yet retrieved.
-unsigned long localTimeStampInSecondsRetrievedFromBLEClient = 0;
-
 // time difference in seconds, between local time and utc time - to get UTC time, do localTimeStampInSecondsRetrievedFromBLEClient - diffBetweenLocalTimeAndUTCTime
 unsigned long diffBetweenLocalTimeAndUTCTime = 0;
+
+// local time, in seconds since 1.1.1970 retrieved from client - this value remains fixed once retrieved. Value 0 means not yet retrieved.
+unsigned long localTimeStampInSecondsRetrievedFromBLEClient = 0;
 
 // time in milliseconds since start of the sketch, when timeStampInSecondsRetrievedFromBLEClient was received
 unsigned long milliSecondsSinceRetrievalTimeStampInSecondsRetrievedFromBLEClient = 0;
 
 // will hold value received from BLE client, defined here once to avoid heap fragmentation
 byte rxValueAsByteArray[maxBytesInOneBLEPacket];
+
+// when receiving wifi names and passwords, xdrip will split longer strings in multiple packets. The first packet will have as fourth byte (ie index 3), 
+// the number of the wifi and/or password being changed, this needs to be stored as a global variable, because only the first packet has that information
+int indexForWifiNamesAndPasswords = 0;
 
 ////// NightScout properties
 
@@ -165,13 +169,13 @@ char NSurl[128];
 // local time in seconds since 1.1.1970 , if return value is 0, then failed
 unsigned long getLocalTimeInSeconds() {
 
-  // Start by trying timestamp received from BLE client, if so calculate it and return if not get it  from ble server
+  // Start by trying timestamp received from BLE client, if so calculate it and return if not get it from ble server
   // it is only after having passed here two times, that this can succeed, if localTimeStampInSecondsRetrievedFromBLEClient = 0, and ble is connected then we'll get the time
-  if (localTimeStampInSecondsRetrievedFromBLEClient > 0) {
-
+  if (localTimeStampInSecondsRetrievedFromBLEClient > 0L) {
     return localTimeStampInSecondsRetrievedFromBLEClient + (millis() - milliSecondsSinceRetrievalTimeStampInSecondsRetrievedFromBLEClient)/1000;
-
   }
+
+  Serial.println("localTimeStampInSecondsRetrievedFromBLEClient <= 0");
 
   /// using ble, only if connected and authenticated, ask client to send time
   if (bleDeviceConnected && bleAuthenticated && pRxTxCharacteristic != NULL) {
@@ -184,10 +188,14 @@ unsigned long getLocalTimeInSeconds() {
   tm  dateandtime;
 
   if (getLocalTime(&dateandtime)) {
+
+    if (debugLogging) {
+      Serial.println(F("getLocalTime is true"));
+    }
     
     time_t utcTimeInSeconds = mktime(&dateandtime);
 
-    //Serial.print("utcTimeInSeconds = ");Serial.println(utcTimeInSeconds);
+    if (debugLogging) {Serial.print("in getLocalTimeInSeconds, utcTimeInSeconds = ");Serial.println(utcTimeInSeconds);}
 
     // if diffBetweenLocalTimeAndUTCTime still 0, then set it now, based on time_zone and dst in config
     if (diffBetweenLocalTimeAndUTCTime == 0) {
@@ -197,15 +205,17 @@ unsigned long getLocalTimeInSeconds() {
     
     return (unsigned long) utcTimeInSeconds + diffBetweenLocalTimeAndUTCTime;
     
+  } else {
+    if (debugLogging) {Serial.println("getLocalTime is false");}
   }
 
   /// try setting up ntp , this will only work if wifi is on, after that, no matter if succeeded or not we will continue trying to get time from ble client
   /// using ntp
   if((WiFiMulti.run() == WL_CONNECTED)) {
-      configTime(cfg.timeZone, cfg.dst, ntpServer, "time.nist.gov", "time.google.com");
+    if (debugLogging) {Serial.println("calling configtime");}
+    configTime(cfg.timeZone, cfg.dst, ntpServer, "time.nist.gov", "time.google.com");
   }
 
-  
   return 0;  
 }
 
@@ -261,7 +271,12 @@ void drawIcon(int16_t x, int16_t y, const uint8_t *bitmap, uint16_t color) {
   }
 }
 
-void wifi_connect() {
+void connectToWiFiIfNightScoutUrlExists() {
+
+  // check if nightscouturl exists, otherwise don't even try to connect
+  if ( sizeOfStringInCharArray(cfg.url, 64) == 0) {
+    return;
+  }
 
   if((WiFiMulti.run() == WL_CONNECTED)) {
     return;
@@ -276,6 +291,9 @@ void wifi_connect() {
   // We start by connecting to a WiFi network
   for(int i=0; i<=9; i++) {
     if((cfg.wlanssid[i][0]!=0) && (cfg.wlanpass[i][0]!=0)) {
+      if (debugLogging) {
+        Serial.print(F("Adding access point "));Serial.print(cfg.wlanssid[i]);Serial.print(F(" with password "));Serial.println(cfg.wlanpass[i]);
+      }
       WiFiMulti.addAP(cfg.wlanssid[i], cfg.wlanpass[i]);
     }
   }
@@ -291,10 +309,8 @@ void wifi_connect() {
 
   Serial.println(F(""));
   Serial.println(F("WiFi connected to SSID ")); Serial.println(WiFi.SSID());
-  Serial.println(F("IP address: "));
-  Serial.println(WiFi.localIP().toString());
 
-  Serial.println();
+  Serial.println(F(""));
 
   Serial.println(F("Connection done"));
 
@@ -354,8 +370,8 @@ void setup() {
           M5.Lcd.fillScreen(BLACK);
       
           M5.Lcd.setBrightness(lcdBrightness);
-          wifi_connect();
-          yield();// seems to be to let the board to things in the background, probably related to calling wifi_connect
+          connectToWiFiIfNightScoutUrlExists();
+          yield();// seems to be to let the board to things in the background, probably related to calling connectToWiFiIfNightScoutUrlExists
       
           M5.Lcd.setBrightness(lcdBrightness);
           M5.Lcd.fillScreen(BLACK);
@@ -367,13 +383,15 @@ void setup() {
           msStart = millis();
           
           // update glycemia now
-          msCount = msStart-16000;
+          msCount = msStart-16000L;
 
           configureTargetServerAndUrl(cfg.url, cfg.token);
 
     }
 
     if (useBLE) {
+      Serial.println(F("Bluetooth is on, open the xdrip app on iOS device and scan for M5Stack"));
+      M5.Lcd.println(F("Bluetooth is on, open the xdrip app on iOS device and scan for M5Stack"));
       setupBLE();
     }
 }
@@ -467,6 +485,7 @@ int readNightscout() {
         err=httpCode;
       }
     } else {
+      Serial.print(F("httpCode = "));Serial.print(httpCode);Serial.print(F(", errorToString = "));Serial.println(http.errorToString(httpCode));
       err=httpCode;
     }
     http.end();
@@ -476,7 +495,8 @@ int readNightscout() {
       
   } else {
     if (millis() - milliSecondsSinceLastCallToWifiConnectFromWithinNightScoutcheck > minimumTimeBetweenTwoCallsToWifiConnectFromWithinNightScoutcheck) {
-      wifi_connect();
+      connectToWiFiIfNightScoutUrlExists();
+      yield();
       milliSecondsSinceLastCallToWifiConnectFromWithinNightScoutcheck = millis();
     }
     
@@ -509,10 +529,10 @@ void updateGlycemia() {
 
       unsigned long utcTimeInSeconds = getUTCTimeInSeconds();
 
-      if (utcTimeInSeconds >  0) {
+      if (utcTimeInSeconds >  0L) {
 
         Serial.print(F("timeStampLatestBgReadingInSecondsUTC = ")); Serial.println(timeStampLatestBgReadingInSecondsUTC);
-        Serial.print(F("utcTimeInSeconds = ")); Serial.println(utcTimeInSeconds);
+        Serial.print(F("in updateGlycemia utcTimeInSeconds = ")); Serial.println(utcTimeInSeconds);
 
         if (utcTimeInSeconds > timeStampLatestBgReadingInSecondsUTC + (5 * 60 + 10) || ns.sensSgvMgDl == 0) {
           Serial.println(F("utcTimeInSeconds > timeStampLatestBgReadingInSecondsUTC + (5 * 60 + 10) or ns.sensSgvMgDl == 0, not showing value"));
@@ -641,7 +661,7 @@ void loop(){
   // updateglycemia and call readNightScout every 120 seconds, or if latest reading is more than 2 minutes old, then check every 15 seconds, or if utcTimeInSeconds is still 0
   // call to updateGlycemia here is only needed to make sure that if there's no recent reading, younger than 5 minutes, to make sure --- is shown
   // if readNightScout results in a new reading, then this will also call updateGlyecemia
-  if((millis()-msCount>120000) || ((millis()-msCount>5000) && utcTimeInSeconds == 0)  || ((millis()-msCount>15000) && utcTimeInSeconds > 0 && (utcTimeInSeconds-timeStampLatestBgReadingInSecondsUTC>120))) {
+  if((millis()-msCount>120000L) || ((millis()-msCount>5000) && utcTimeInSeconds == 0L)  || ((millis()-msCount>15000L) && utcTimeInSeconds > 0L && (utcTimeInSeconds-timeStampLatestBgReadingInSecondsUTC>120L))) {
     updateGlycemia();
     readNightscout();
     msCount = millis();  
@@ -803,7 +823,7 @@ void sendTextToBLEClient(char * textToSend, uint8_t opCode, int maximumSizeOfTex
                 }
 
                 // send the data 
-                if (debuglogging) {
+                if (debugLogging) {
                   Serial.print(F("sending packet "));Serial.print(numberOfNextPacketToSend);Serial.print(F(" for text "));Serial.print(textToSend);Serial.print(F(" with opcode "));Serial.print(opCode);Serial.println(F(" to client"));
                 }
                 pRxTxCharacteristic->setValue(dataToSend, sizeOfNextPacketToSend);
@@ -849,20 +869,33 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
           
           case 0x01:{
              Serial.println(F("received opcode for writeNightScoutUrlTx"));
-             std::strcpy (cfg.url, rxValue.c_str() + 1);
+             // if it's a long url, we will receive multiple packets, the packet number is the second byte, starting at 1, the total number of 
+             // packets is byte 2, then the contents start as of the 4th byte
+             // there might still be packets coming 
+             std::strcpy (cfg.url + (rxValueAsByteArray[1] - 1) * (maxBytesInOneBLEPacket - 3), rxValue.c_str() + 3);
+             if (rxValueAsByteArray[1] == rxValueAsByteArray[2]) {
+              if (debugLogging) {Serial.print("received all packets, url = ");Serial.println(cfg.url);}
+              configureTargetServerAndUrl(cfg.url, cfg.token);
+              connectToWiFiIfNightScoutUrlExists();
+             }
           }
           break;
           
           case 0x02:{
-             Serial.println(F("received opcode for writeNightScoutTokenTx"));
-             std::strcpy (cfg.token, rxValue.c_str() + 1);
+             Serial.println(F("received opcode for writeNightScoutAPIKeyTx"));
+             std::strcpy (cfg.token + (rxValueAsByteArray[1] - 1) * (maxBytesInOneBLEPacket - 3), rxValue.c_str() + 3);
+             if (rxValueAsByteArray[1] == rxValueAsByteArray[2]) {
+              if (debugLogging) {Serial.print("received all packets, token = ");Serial.println(cfg.token);}
+              configureTargetServerAndUrl(cfg.url, cfg.token);
+             }
+
           }
           break;
           
           case 0x03:{
             char * unitismgdl = new char[6];// value is literally "true" or "false"
              Serial.println(F("received opcode for writemgdlTx"));
-             std::strcpy (unitismgdl, rxValue.c_str() + 1);
+             std::strcpy (unitismgdl, rxValue.c_str() + 3);// starts at postion 4, because split in packets is used
              if (strcmp(unitismgdl, "true") == 0) {
               cfg.show_mgdl = 0;
              } else {
@@ -887,15 +920,51 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
           
           case 0x07: {
              Serial.println(F("received opcode for writeWlanSSIDTx"));
-             // wifi name starts at index 2, index 1 is the number of the wifi to be set
-             std::strcpy (cfg.wlanssid[rxValue[1]], rxValue.c_str() + 2);
+             if (rxValueAsByteArray[1] == 1) {// it's the first packet, the first byte is the number of the wifi name
+                
+                //0 is ascii code 48, that means for instance if rxValueAsByteArray[3] = 49, then the actual number is 1
+                // but from that we need to substract further one, because indexing starts at 0
+                indexForWifiNamesAndPasswords = rxValueAsByteArray[3] - 48 - 1;
+                
+                std::strcpy (cfg.wlanssid[indexForWifiNamesAndPasswords], rxValue.c_str() + 4);
+                
+             } else if (rxValueAsByteArray[1] == 2) {// second packet
+                std::strcpy (cfg.wlanssid[indexForWifiNamesAndPasswords] + maxBytesInOneBLEPacket - 4, rxValue.c_str() + 3);
+             } else {// third or fourth, ...  packet
+                std::strcpy (cfg.wlanssid[indexForWifiNamesAndPasswords] + (maxBytesInOneBLEPacket - 4) + (rxValueAsByteArray[1] - 2) * (maxBytesInOneBLEPacket - 3), rxValue.c_str() + 3);
+             }
+             
+             if (rxValueAsByteArray[1] == rxValueAsByteArray[2]) {
+                // all packets received
+                if (debugLogging) {Serial.print("received all packets, cfg.wlanssid = ");Serial.println(cfg.wlanssid[indexForWifiNamesAndPasswords]);}
+             }
+
           }
           break;
           
           case 0x08:{
              Serial.println(F("received opcode for writeWlanPassTx"));
-             // wifi name starts at index 2, index 1 is the number of the wifi to be set
-             std::strcpy (cfg.wlanpass[rxValue[1]], rxValue.c_str() + 2);
+
+             if (rxValueAsByteArray[1] == 1) {// it's the first packet, the first byte is the number of the password
+                
+                //0 is ascii code 48, that means for instance if rxValueAsByteArray[3] = 49, then the actual number is 1
+                // but from that we need to substract further one, because indexing starts at 0
+                indexForWifiNamesAndPasswords = rxValueAsByteArray[3] - 48 - 1;
+                
+                std::strcpy (cfg.wlanpass[indexForWifiNamesAndPasswords], rxValue.c_str() + 4);
+                
+             } else if (rxValueAsByteArray[1] == 2) {// second packet
+                std::strcpy (cfg.wlanpass[indexForWifiNamesAndPasswords] + maxBytesInOneBLEPacket - 4, rxValue.c_str() + 3);
+             } else {// third or fourth, ...  packet
+                std::strcpy (cfg.wlanpass[indexForWifiNamesAndPasswords] + (maxBytesInOneBLEPacket - 4) + (rxValueAsByteArray[1] - 2) * (maxBytesInOneBLEPacket - 3), rxValue.c_str() + 3);
+             }
+             
+             if (rxValueAsByteArray[1] == rxValueAsByteArray[2]) {
+                // all packets received
+                if (debugLogging) {Serial.print("received all packets, cfg.wlanssid = ");Serial.println(cfg.wlanpass[indexForWifiNamesAndPasswords]);}
+             }
+
+
           }
           break;
 
@@ -976,7 +1045,8 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
 
                
              }
-             break;
+            }
+            break;
 
              case 0x10: {
                 Serial.println(F("received opcode for bgReadingTx"));
@@ -1070,7 +1140,6 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
              }
              break;
              
-          }
           
         }
       }
