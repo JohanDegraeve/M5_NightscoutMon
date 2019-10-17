@@ -106,6 +106,8 @@ struct NSinfo {
   int arrowAngle = 180;
 } ns;
 
+int previousArrowAngle = 180;
+
 //////// BLE PROPERTIES  ///////
 
 // used for creating random password
@@ -573,6 +575,10 @@ void updateGlycemia() {
           previousEqualToNew = false;
         }
       }
+      if (previousArrowAngle != ns.arrowAngle) {
+         previousEqualToNew = false;
+      }
+      
       // if strings is new, then display the new string and copy to previousSensSgvStr
       if (!previousEqualToNew) {
          M5.Lcd.fillRect(0, 0, 320, 240, TFT_BLACK);
@@ -696,6 +702,7 @@ void configureTargetServerAndUrl(char *url, char *token) {
 }
 
 void setNsArrowAngle() {
+          previousArrowAngle = ns.arrowAngle;
             ns.arrowAngle = 180;
           if(strcmp(ns.sensDir,"DoubleDown")==0)
             ns.arrowAngle = 90;
