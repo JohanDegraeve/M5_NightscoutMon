@@ -337,8 +337,8 @@ void setup() {
     // Lcd display
     M5.Lcd.setBrightness(100);
     M5.Lcd.fillScreen(BLACK);
-    M5.Lcd.setCursor(0, 0);
-    M5.Lcd.setTextSize(2);
+    M5.Lcd.setCursor(0, 0);//(0, 0, 1) for mini
+    M5.Lcd.setTextSize(2);// 1 for mini
     yield();
 
     Serial.print(F("Free Heap: ")); Serial.println(ESP.getFreeHeap());
@@ -582,10 +582,10 @@ void updateGlycemia() {
       
       // if strings is new, then display the new string and copy to previousSensSgvStr
       if (!previousEqualToNew) {
-         M5.Lcd.fillRect(0, 0, 320, 240, TFT_BLACK);
-         M5.Lcd.setTextSize(4);
+         M5.Lcd.fillRect(0, 0, 320, 240, TFT_BLACK);// mini = screen size 80×160
+         M5.Lcd.setTextSize(4);// mini = size 1
          M5.Lcd.setTextDatum(MC_DATUM);
-         M5.Lcd.drawString(sensSgvStr, 160, 120, GFXFF);
+         M5.Lcd.drawString(sensSgvStr, 160, 120, GFXFF);// mini M5.Lcd.drawString(sensSgvStr, 0, 19, 4);
 
          /// draw arrow
          int ay=0;
@@ -598,6 +598,8 @@ void updateGlycemia() {
       
         if(ns.arrowAngle!=180)
            drawArrow(280, ay, 10, ns.arrowAngle+85, 28, 28, textColor);
+
+           // mini drawArrow(112, 40, 10, arrowAngle+85, 30, 30, glColor);
 
         // copy sensSgvStr to previousSensSgvStr
         for (int i = 0; i < senssgvStringLength; i++) {
