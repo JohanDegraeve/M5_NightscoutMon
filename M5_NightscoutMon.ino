@@ -577,6 +577,7 @@ void updateGlycemia() {
       }
       if (previousArrowAngle != ns.arrowAngle) {
          previousEqualToNew = false;
+         previousArrowAngle = ns.arrowAngle;
       }
       
       // if strings is new, then display the new string and copy to previousSensSgvStr
