@@ -1,5 +1,3 @@
-
-# UNDER DEVELOPMENT ! NOT YET READY !!
 # M5_NightscoutMon with bluetooth connection with xdrip for iOS
 ## M5Stack Nightscout monitor
 ### Intro
