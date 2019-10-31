@@ -1,3 +1,8 @@
+#include <BLEDevice.h>
+#include <BLEUtils.h>
+#include <BLEScan.h>
+#include <BLEAdvertisedDevice.h>
+
 /*  M5Stack Nightscout monitor
     Copyright (C) 2019 Johan Degraeve
 
@@ -107,6 +112,9 @@ struct NSinfo {
 } ns;
 
 int previousArrowAngle = 180;
+
+// if it's not an M5StackC, then it's a normal M5Stack
+bool isM5StackC = false;
 
 //////// BLE PROPERTIES  ///////
 
@@ -583,9 +591,15 @@ void updateGlycemia() {
       // if strings is new, then display the new string and copy to previousSensSgvStr
       if (!previousEqualToNew) {
          M5.Lcd.fillRect(0, 0, 320, 240, TFT_BLACK);// mini = screen size 80×160
-         M5.Lcd.setTextSize(4);// mini = size 1
-         M5.Lcd.setTextDatum(MC_DATUM);
-         M5.Lcd.drawString(sensSgvStr, 160, 120, GFXFF);// mini M5.Lcd.drawString(sensSgvStr, 0, 19, 4);
+         if (isM5StackC) {
+           M5.Lcd.setTextSize(1);
+           M5.Lcd.setTextDatum(MC_DATUM);
+           M5.Lcd.drawString(sensSgvStr, 0, 19, 4);
+         } else {
+           M5.Lcd.setTextSize(4);
+           M5.Lcd.setTextDatum(MC_DATUM);
+           M5.Lcd.drawString(sensSgvStr, 160, 120, GFXFF);
+         }
 
          /// draw arrow
          int ay=0;
@@ -596,10 +610,13 @@ void updateGlycemia() {
           else
             ay=30;
       
-        if(ns.arrowAngle!=180)
-           drawArrow(280, ay, 10, ns.arrowAngle+85, 28, 28, textColor);
-
-           // mini drawArrow(112, 40, 10, arrowAngle+85, 30, 30, glColor);
+        if(ns.arrowAngle!=180) {
+           if (isM5StackC) {
+              drawArrow(112, 40, 10, arrowAngle+85, 30, 30, glColor);
+           } else {
+              drawArrow(280, ay, 10, ns.arrowAngle+85, 28, 28, textColor);
+           }
+        }
 
         // copy sensSgvStr to previousSensSgvStr
         for (int i = 0; i < senssgvStringLength; i++) {
