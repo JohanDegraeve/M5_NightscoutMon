@@ -612,7 +612,7 @@ void updateGlycemia() {
       
         if(ns.arrowAngle!=180) {
            if (isM5StackC) {
-              drawArrow(112, 40, 10, arrowAngle+85, 30, 30, glColor);
+              drawArrow(112, 40, 10, ns.arrowAngle+85, 30, 30, textColor);
            } else {
               drawArrow(280, ay, 10, ns.arrowAngle+85, 28, 28, textColor);
            }
