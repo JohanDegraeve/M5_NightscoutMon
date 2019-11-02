@@ -114,7 +114,7 @@ struct NSinfo {
 int previousArrowAngle = 180;
 
 // if it's not an M5StackC, then it's a normal M5Stack
-bool isM5StackC = false;
+bool isM5StickC = false;
 
 //////// BLE PROPERTIES  ///////
 
@@ -591,7 +591,7 @@ void updateGlycemia() {
       // if strings is new, then display the new string and copy to previousSensSgvStr
       if (!previousEqualToNew) {
          M5.Lcd.fillRect(0, 0, 320, 240, TFT_BLACK);// mini = screen size 80×160
-         if (isM5StackC) {
+         if (isM5StickC) {
            M5.Lcd.setTextSize(1);
            M5.Lcd.setTextDatum(MC_DATUM);
            M5.Lcd.drawString(sensSgvStr, 0, 19, 4);
@@ -611,7 +611,7 @@ void updateGlycemia() {
             ay=30;
       
         if(ns.arrowAngle!=180) {
-           if (isM5StackC) {
+           if (isM5StickC) {
               drawArrow(112, 40, 10, ns.arrowAngle+85, 30, 30, textColor);
            } else {
               drawArrow(280, ay, 10, ns.arrowAngle+85, 28, 28, textColor);
