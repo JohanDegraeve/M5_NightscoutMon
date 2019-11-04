@@ -32,9 +32,15 @@ To compile, in Arduino IDE set Tools - Partition Scheme - No OTA (Large APP). Th
 
 ### Installaton and Support
 
+Download latest M5Burner release : https://github.com/JohanDegraeve/M5_NightscoutMon/releases
+It is Windows executable with binary M5Stack firmware included. Just unzip it, start the M5Burner.exe, choose COM port where your M5Stack is connected and burn the firmware.
+
+To compile : 
 See the page created by Martin Lukasek <martin@lukasek.cz> https://github.com/mlukasek/M5_NightscoutMon#installation-and-support , just take into account previous remark about large APP, and download/clone this repository here in stead of Martin's repository
 
 Additional useful info https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/
+
+More info ? send an email to xdrip@proximus.be
 
 ### microSD card
 
