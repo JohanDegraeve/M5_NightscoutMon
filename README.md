@@ -40,6 +40,8 @@ See the page created by Martin Lukasek <martin@lukasek.cz> https://github.com/ml
 
 Additional useful info https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/
 
+More info ? send an email to xdrip@proximus.be
+
 ### microSD card
 
 The M5Stack can work without microSD card and without the M5NS.INI file. If the file is missing, then whenever the M5Stack restarts, xdrip will need to be connected to configure the required parameters
