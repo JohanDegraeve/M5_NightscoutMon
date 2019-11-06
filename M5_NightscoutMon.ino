@@ -13,7 +13,6 @@
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation, either version 3 of the License, or
     (at your option) any later version.
-
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -55,7 +54,7 @@
 #include <BLE2902.h>
 
 // if debugLogging then there's more logging, haha
-const bool debugLogging = false;
+const bool debugLogging = true;
 
 extern const unsigned char wifi2_icon16x16[];
 
@@ -71,10 +70,8 @@ struct err_log_item {
 int err_log_ptr = 0;
 int err_log_count = 0;
 
-int dispPage = 1;
-#define MAX_PAGE 2
-int icon_xpos[3] = {144, 144+18, 144+2*18};
-int icon_ypos[3] = {0, 0, 0};
+int icon_xpos[1] = {144};
+int icon_ypos[1] = {0};
 
 #ifndef min
   #define min(a,b) (((a) < (b)) ? (a) : (b))
@@ -85,7 +82,13 @@ unsigned long msCount;
 unsigned long msStart;
 static uint8_t lcdBrightness = 10;
 static char *iniFilename = "/M5NS.INI";
+
+// color to use for text, also for slope arrow
 static uint16_t textColor = TFT_WHITE;
+// color to use for background
+static uint16_t backGroundColor = TFT_BLACK;
+// rotation to use
+static uint8_t rotation = 1;// 1 = horizontal, normal; 
 
 // milliseconds since start of last call to connectToWiFiIfNightScoutUrlExists from within nightscout check
 unsigned long milliSecondsSinceLastCallToWifiConnectFromWithinNightScoutcheck = 0;
@@ -239,33 +242,10 @@ unsigned long getUTCTimeInSeconds() {
   }
 }
 
-void setPageIconPos(int page) {
-  switch(page) {
-    case 0:
-      icon_xpos[0] = 144;
-      icon_xpos[1] = 144+18;
-      icon_xpos[2] = 144+2*18;
+void setPageIconPos() {
+      // wifi icon, top left
+      icon_xpos[0] = 0;
       icon_ypos[0] = 0;
-      icon_ypos[1] = 0;
-      icon_ypos[2] = 0;
-      break;
-    case 1:
-      icon_xpos[0] = 126;
-      icon_xpos[1] = 126+18;
-      icon_xpos[2] = 126+18; // 320-16;
-      icon_ypos[0] = 0;
-      icon_ypos[1] = 0;
-      icon_ypos[2] = 18; // 220;
-      break;
-    default:
-      icon_xpos[0] = 144;
-      icon_xpos[1] = 144+18;
-      icon_xpos[2] = 144+2*18;
-      icon_ypos[0] = 0;
-      icon_ypos[1] = 0;
-      icon_ypos[2] = 0;
-      break;
-  }
 }
 
 void drawIcon(int16_t x, int16_t y, const uint8_t *bitmap, uint16_t color) {
@@ -335,8 +315,11 @@ void setup() {
     // initialize the M5Stack object
     M5.begin();
 
-    // set text color foreground, black background, always
-    M5.Lcd.setTextColor(textColor, TFT_BLACK);
+    // set rotation
+    M5.Lcd.setRotation(rotation);
+    
+    // set text color foreground, backGroundColor background, always
+    M5.Lcd.setTextColor(textColor, backGroundColor);
     
     // prevent button A "ghost" random presses
     Wire.begin();
@@ -344,9 +327,10 @@ void setup() {
     
     // Lcd display
     M5.Lcd.setBrightness(100);
-    M5.Lcd.fillScreen(BLACK);
+    M5.Lcd.fillScreen(backGroundColor);
     M5.Lcd.setCursor(0, 0);//(0, 0, 1) for mini
     M5.Lcd.setTextSize(2);// 1 for mini
+    
     yield();
 
     Serial.print(F("Free Heap: ")); Serial.println(ESP.getFreeHeap());
@@ -377,17 +361,16 @@ void setup() {
           preferences.end();
       
           delay(1000);
-          M5.Lcd.fillScreen(BLACK);
+          M5.Lcd.fillScreen(backGroundColor);
       
           M5.Lcd.setBrightness(lcdBrightness);
           connectToWiFiIfNightScoutUrlExists();
           yield();// seems to be to let the board to things in the background, probably related to calling connectToWiFiIfNightScoutUrlExists
       
           M5.Lcd.setBrightness(lcdBrightness);
-          M5.Lcd.fillScreen(BLACK);
+          M5.Lcd.fillScreen(backGroundColor);
       
-          dispPage = 1;// default page is page with value large number
-          setPageIconPos(dispPage);
+          setPageIconPos();
           
           // stat startup time
           msStart = millis();
@@ -417,8 +400,8 @@ int readNightscout() {
     HTTPClient http;
     char tmpstr[32];/// DELETE THIS OR CHECK FIRST IF DETAILED DEBUGGING IS ENABLED WITH EXTRA FLAG, TO AVOID THAT THIS GETS ALLOCATED EACH TIME AGAIN AND AGAIN
 
-    M5.Lcd.fillRect(icon_xpos[0], icon_ypos[0], 16, 16, BLACK);
-    drawIcon(icon_xpos[0], icon_ypos[0], (uint8_t*)wifi2_icon16x16, TFT_BLUE);
+    M5.Lcd.fillRect(icon_xpos[0], icon_ypos[0], 16, 16, backGroundColor);
+    drawIcon(icon_xpos[0], icon_ypos[0], (uint8_t*)wifi2_icon16x16,  TFT_BLUE);
     
     Serial.print(F("JSON query NSurl = \'"));Serial.print(NSurl);Serial.print(F("\'\n"));
     http.begin(NSurl); //HTTP
@@ -512,7 +495,7 @@ int readNightscout() {
     
   }
 
-  M5.Lcd.fillRect(icon_xpos[0], icon_ypos[0], 16, 16, BLACK);
+  M5.Lcd.fillRect(icon_xpos[0], icon_ypos[0], 16, 16, backGroundColor);
 
   return err;
 }
@@ -524,15 +507,18 @@ void updateGlycemia() {
   M5.Lcd.setTextSize(1);
   M5.Lcd.setCursor(0, 0);
 
-  switch(dispPage) {
-    case 1: {
+  if (M5.Lcd.width() >= 320){
+    M5.Lcd.setFreeFont(FSSB24);
+  } else {
+    M5.Lcd.setFreeFont(FSSB18);
+  }
+  
       
       sprintf(tmpstr, "Glyk: %4.1f %s", ns.sensSgv, ns.sensDir);
       Serial.println(tmpstr);
       
       char sensSgvStr[senssgvStringLength];
       strcpy(sensSgvStr, "---");
-      M5.Lcd.setFreeFont(FSSB24);
 
       struct tm timeinfo;
       // if we can't get timeinfo then skip it all
@@ -547,10 +533,10 @@ void updateGlycemia() {
         if (utcTimeInSeconds > timeStampLatestBgReadingInSecondsUTC + (5 * 60 + 10) || ns.sensSgvMgDl == 0) {
           Serial.println(F("utcTimeInSeconds > timeStampLatestBgReadingInSecondsUTC + (5 * 60 + 10) or ns.sensSgvMgDl == 0, not showing value"));
           // latest nightscout reading is more than 5 minutes old, don't show the value - value is "---"
-          M5.Lcd.setFreeFont(FSSB24);
+          
         } else {
                 if( cfg.show_mgdl == 0 ) {
-                  M5.Lcd.setFreeFont(FSSB24);
+                  
                   if(ns.sensSgvMgDl<100) {
                     sprintf(sensSgvStr, "%2.0f", ns.sensSgvMgDl);
                   } else {
@@ -561,11 +547,16 @@ void updateGlycemia() {
                   if(ns.sensSgv<10) {
                     Serial.println("ns.sensSgv < 10");
                   sprintf(sensSgvStr, "%3.1f", ns.sensSgv);
-                  M5.Lcd.setFreeFont(FSSB24);
+                  
                 } else {
                   Serial.println("ns.sensSgv >= 10");
                   sprintf(sensSgvStr, "%4.1f", ns.sensSgv);
-                  M5.Lcd.setFreeFont(FSSB18);
+                  if (M5.Lcd.width() >= 320){
+                    M5.Lcd.setFreeFont(FSSB18);
+                  } else {
+                    M5.Lcd.setFreeFont(FSSB12);
+                  }
+
                 }
               }
 
@@ -590,16 +581,15 @@ void updateGlycemia() {
       
       // if strings is new, then display the new string and copy to previousSensSgvStr
       if (!previousEqualToNew) {
-         M5.Lcd.fillRect(0, 0, 320, 240, TFT_BLACK);// mini = screen size 80×160
+         M5.Lcd.fillRect(0, 0,  M5.Lcd.width(),  M5.Lcd.height(), backGroundColor);
          if (isM5StickC) {
            M5.Lcd.setTextSize(1);
-           M5.Lcd.setTextDatum(MC_DATUM);
-           M5.Lcd.drawString(sensSgvStr, 0, 19, 4);
          } else {
            M5.Lcd.setTextSize(4);
-           M5.Lcd.setTextDatum(MC_DATUM);
-           M5.Lcd.drawString(sensSgvStr, 160, 120, GFXFF);
          }
+
+         M5.Lcd.setTextDatum(MC_DATUM);
+         M5.Lcd.drawString(sensSgvStr, M5.Lcd.width()/2, M5.Lcd.height()/2, GFXFF);
 
          /// draw arrow
          int ay=0;
@@ -609,13 +599,18 @@ void updateGlycemia() {
             ay=18;
           else
             ay=30;
-      
-        if(ns.arrowAngle!=180) {
-           if (isM5StickC) {
-              drawArrow(112, 40, 10, ns.arrowAngle+85, 30, 30, textColor);
-           } else {
-              drawArrow(280, ay, 10, ns.arrowAngle+85, 28, 28, textColor);
-           }
+
+        if (strcmp(sensSgvStr, "---") != 0) {
+          if (debugLogging) {
+            Serial.println(F("sensSgvStr != ==="));
+          }
+          if(ns.arrowAngle!=180) {
+             if (isM5StickC) {
+                drawArrow(M5.Lcd.width() - 40, 40, 10, ns.arrowAngle+85, 30, 30, textColor);//(int x, int y, int asize, int aangle, int pwidth, int plength, uint16_t color){
+             } else {
+                drawArrow( M5.Lcd.width() - 40, ay, 10, ns.arrowAngle+85, 28, 28, textColor);
+             }
+          }
         }
 
         // copy sensSgvStr to previousSensSgvStr
@@ -624,55 +619,7 @@ void updateGlycemia() {
         }
       }
     
-      //drawLogWarningIcon();
-    }
-    break;
-   
-    case MAX_PAGE: {
-      // display error log
-      char tmpStr[32];
-      HTTPClient http;
-      M5.Lcd.fillScreen(BLACK);
-      M5.Lcd.setCursor(0, 18);
-      M5.Lcd.setTextDatum(TL_DATUM);
-      M5.Lcd.setFreeFont(FMB9);
-      M5.Lcd.setTextSize(1); 
-      M5.Lcd.drawString(F("Date  Time  Error Log"), 0, 0, GFXFF);
-      // M5.Lcd.drawString("Error", 143, 0, GFXFF);
-      M5.Lcd.setFreeFont(FM9);
-      if(err_log_ptr==0) {
-        M5.Lcd.drawString(F("no errors in log"), 0, 20, GFXFF);
-      } else {
-        for(int i=0; i<err_log_ptr; i++) {
-          sprintf(tmpStr, "%02d.%02d.%02d:%02d", err_log[i].err_time.tm_mday, err_log[i].err_time.tm_mon+1, err_log[i].err_time.tm_hour, err_log[i].err_time.tm_min);
-          M5.Lcd.drawString(tmpStr, 0, 20+i*18, GFXFF);
-          if(err_log[i].err_code<0) {
-            strlcpy(tmpStr, http.errorToString(err_log[i].err_code).c_str(), 32);
-          } else {
-            switch(err_log[i].err_code) {
-              case 1001:
-                strcpy(tmpStr, "JSON parsing failed");
-                break;
-              case 1002:
-                strcpy(tmpStr, "No data from Nightscout");
-                break;
-              case 1003:
-                strcpy(tmpStr, "JSON2 parsing failed");
-                break;
-              default:              
-                sprintf(tmpStr, "HTTP error %d", err_log[i].err_code);
-            }
-          }
-          M5.Lcd.drawString(tmpStr, 132, 20+i*18, GFXFF);
-        }
-        M5.Lcd.setFreeFont(FMB9);
-        sprintf(tmpStr, "Total errors %d", err_log_count);
-        M5.Lcd.drawString(tmpStr, 0, 20+err_log_ptr*18, GFXFF);
-      }
-
-    }
-    break;
-  }
+  
 }
 
 // the loop routine runs over and over again forever
@@ -1161,8 +1108,48 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
                     strcpy(previousSensSgvStr, "");
 
                     // set new textcolor
-                    M5.Lcd.setTextColor(textColor, TFT_BLACK);
+                    M5.Lcd.setTextColor(textColor, backGroundColor);
                     updateGlycemia();
+                }
+             }
+             break;
+
+             case 0x17: {
+                Serial.println(F("received opcode for writeBackGroundColorTx"));
+                if (bleAuthenticated) {
+
+                    backGroundColor = rxValueAsByteArray[1] * 256 + rxValueAsByteArray[2];
+                    Serial.print(F("backGroundColor value = "));Serial.println(backGroundColor);
+                    
+                    // reinitialize previousSensSgvStr, to force a redisplay of the screen when calling updateGlycemia
+                    strcpy(previousSensSgvStr, "");
+
+                    // set new textcolor
+                    M5.Lcd.setTextColor(textColor, backGroundColor);
+                    
+                    updateGlycemia();
+
+                  
+                }
+             }
+             break;
+
+             case 0x18: {
+                Serial.println(F("received opcode for writeRotationTx"));
+                if (bleAuthenticated) {
+
+                    // in fact rotation will have value 0, 1, 2 or 3
+                    rotation = rxValueAsByteArray[1];
+                    Serial.print(F("rotation value = "));Serial.println(rotation);
+                    
+                    // reinitialize previousSensSgvStr, to force a redisplay of the screen when calling updateGlycemia
+                    strcpy(previousSensSgvStr, "");
+
+                    // set new rotation
+                    M5.Lcd.setRotation(rotation);
+
+                    updateGlycemia();
+
                 }
              }
              break;
