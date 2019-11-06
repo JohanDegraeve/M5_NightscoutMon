@@ -13,7 +13,6 @@
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation, either version 3 of the License, or
     (at your option) any later version.
-
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -55,7 +54,7 @@
 #include <BLE2902.h>
 
 // if debugLogging then there's more logging, haha
-const bool debugLogging = false;
+const bool debugLogging = true;
 
 extern const unsigned char wifi2_icon16x16[];
 
@@ -85,7 +84,11 @@ unsigned long msCount;
 unsigned long msStart;
 static uint8_t lcdBrightness = 10;
 static char *iniFilename = "/M5NS.INI";
+
+// color to use for text, also for slope arrow
 static uint16_t textColor = TFT_WHITE;
+// color to use for background
+static uint16_t backGroundColor = TFT_BLACK;
 
 // milliseconds since start of last call to connectToWiFiIfNightScoutUrlExists from within nightscout check
 unsigned long milliSecondsSinceLastCallToWifiConnectFromWithinNightScoutcheck = 0;
@@ -276,6 +279,8 @@ void drawIcon(int16_t x, int16_t y, const uint8_t *bitmap, uint16_t color) {
     for (i = 0; i < w; i++) {
       if (pgm_read_byte(bitmap + j * byteWidth + i / 8) & (128 >> (i & 7))) {
         M5.Lcd.drawPixel(x + i, y + j, color);
+      } else {
+         M5.Lcd.drawPixel(x + i, y + j, backGroundColor);
       }
     }
   }
@@ -336,7 +341,7 @@ void setup() {
     M5.begin();
 
     // set text color foreground, black background, always
-    M5.Lcd.setTextColor(textColor, TFT_BLACK);
+    M5.Lcd.setTextColor(textColor, backGroundColor);
     
     // prevent button A "ghost" random presses
     Wire.begin();
@@ -347,6 +352,7 @@ void setup() {
     M5.Lcd.fillScreen(BLACK);
     M5.Lcd.setCursor(0, 0);//(0, 0, 1) for mini
     M5.Lcd.setTextSize(2);// 1 for mini
+    
     yield();
 
     Serial.print(F("Free Heap: ")); Serial.println(ESP.getFreeHeap());
@@ -590,7 +596,7 @@ void updateGlycemia() {
       
       // if strings is new, then display the new string and copy to previousSensSgvStr
       if (!previousEqualToNew) {
-         M5.Lcd.fillRect(0, 0, 320, 240, TFT_BLACK);// mini = screen size 80×160
+         M5.Lcd.fillRect(0, 0, 320, 240, backGroundColor);// mini = screen size 80×160
          if (isM5StickC) {
            M5.Lcd.setTextSize(1);
            M5.Lcd.setTextDatum(MC_DATUM);
@@ -1161,11 +1167,29 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
                     strcpy(previousSensSgvStr, "");
 
                     // set new textcolor
-                    M5.Lcd.setTextColor(textColor, TFT_BLACK);
+                    M5.Lcd.setTextColor(textColor, backGroundColor);
                     updateGlycemia();
                 }
              }
              break;
+
+             case 0x17: {
+                Serial.println(F("received opcode for writeBackGroundColorTx"));
+                if (bleAuthenticated) {
+
+                    backGroundColor = rxValueAsByteArray[1] * 256 + rxValueAsByteArray[2];
+                    Serial.print(F("backGroundColor value = "));Serial.println(textColor);
+                    
+                    // reinitialize previousSensSgvStr, to force a redisplay of the screen when calling updateGlycemia
+                    strcpy(previousSensSgvStr, "");
+
+                    // set new textcolor
+                    M5.Lcd.setTextColor(textColor, backGroundColor);
+                    updateGlycemia();
+
+                  
+                }
+             }
              
           
         }
