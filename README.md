@@ -21,7 +21,7 @@ With xdrip one can
  * Configure WiFi Access points : names and passwords, maximum 3 access points (the first 3, the original project allows up to 10 configured in the ini file)
  * configure NightScout url and token
  * configure brightness (still under development)
- * configure the text color
+ * configure the text color, backgroundColor (xdrip 3.2.0), rotation (xdrip 3.2.0)
  * configure (optional) a password ==> if a password is set in the M5Stack, then the same password must be configured in the xdrip app - this is not strictly necessary, see further on
  * the selected bloodglucose unit (mgdl or mmol) will also be sent to the M5Stack
  * Send readings : the M5Stack can receive readings from xdrip. If it doesn't receive readings, and if there's a WiFi connection and also a NightScout url (optionally also token) configured, then the M5Stack will try to download readings from NightScout 
