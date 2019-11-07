@@ -87,6 +87,7 @@ static char *iniFilename = "/M5NS.INI";
 static uint16_t textColor = TFT_WHITE;
 // color to use for background
 static uint16_t backGroundColor = TFT_BLACK;
+
 // rotation to use
 static uint8_t rotation = 1;// 1 = horizontal, normal; 2 = 90 clockwise, 3 = upside down, 4 = 270 clockwise or 90 anti-clockwise
 
@@ -256,6 +257,8 @@ void drawIcon(int16_t x, int16_t y, const uint8_t *bitmap, uint16_t color) {
     for (i = 0; i < w; i++) {
       if (pgm_read_byte(bitmap + j * byteWidth + i / 8) & (128 >> (i & 7))) {
         M5.Lcd.drawPixel(x + i, y + j, color);
+      } else {
+         M5.Lcd.drawPixel(x + i, y + j, backGroundColor);
       }
     }
   }
@@ -1145,7 +1148,6 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
                 }
              }
              break;
-             
           
         }
       }
