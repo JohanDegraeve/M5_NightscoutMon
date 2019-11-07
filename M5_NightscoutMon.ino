@@ -88,7 +88,7 @@ static uint16_t textColor = TFT_WHITE;
 // color to use for background
 static uint16_t backGroundColor = TFT_BLACK;
 // rotation to use
-static uint8_t rotation = 1;// 1 = horizontal, normal; 
+static uint8_t rotation = 1;// 1 = horizontal, normal; 2 = 90 clockwise, 3 = upside down, 4 = 270 clockwise or 90 anti-clockwise
 
 // milliseconds since start of last call to connectToWiFiIfNightScoutUrlExists from within nightscout check
 unsigned long milliSecondsSinceLastCallToWifiConnectFromWithinNightScoutcheck = 0;
@@ -318,7 +318,7 @@ void setup() {
     // set rotation
     M5.Lcd.setRotation(rotation);
     
-    // set text color foreground, backGroundColor background, always
+    // set text color foreground and backGroundColor
     M5.Lcd.setTextColor(textColor, backGroundColor);
     
     // prevent button A "ghost" random presses
@@ -601,9 +601,6 @@ void updateGlycemia() {
             ay=30;
 
         if (strcmp(sensSgvStr, "---") != 0) {
-          if (debugLogging) {
-            Serial.println(F("sensSgvStr != ==="));
-          }
           if(ns.arrowAngle!=180) {
              if (isM5StickC) {
                 drawArrow(M5.Lcd.width() - 40, 40, 10, ns.arrowAngle+85, 30, 30, textColor);//(int x, int y, int asize, int aangle, int pwidth, int plength, uint16_t color){
@@ -1008,11 +1005,6 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
                   Serial.println(F("sending opcode authenticateFailureRx to client, user should switch off-on the M5stack or set the right password in the app"));
                   sendTextToBLEClient("", 0x0C, 0);
                   
-                  // disconnect because it may be an untrusted device that is trying to connect
-                 pService->stop();
-                 // resetup ble so that the M5stack restarts advertising
-                 setupBLE();
-                 
                   // set bleAuthenticated to false
                   bleAuthenticated = false;
                 }
