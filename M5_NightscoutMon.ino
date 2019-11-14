@@ -31,7 +31,7 @@
     Peter Leimbach (Nightscout token)
 */
 
-#include <M5Stack.h>
+#include <M5StickC.h>
 #include <Preferences.h>
 #include <WiFi.h>
 #include <WiFiMulti.h>
@@ -118,7 +118,7 @@ struct NSinfo {
 int previousArrowAngle = 180;
 
 // if it's not an M5StackC, then it's a normal M5Stack
-bool isM5StickC = false;
+bool isM5StickC = true;
 
 //////// BLE PROPERTIES  ///////
 
@@ -329,7 +329,7 @@ void setup() {
     SD.begin();
     
     // Lcd display
-    M5.Lcd.setBrightness(100);
+    //M5.Lcd.setBrightness(100);
     M5.Lcd.fillScreen(backGroundColor);
     M5.Lcd.setCursor(0, 0);//(0, 0, 1) for mini
     M5.Lcd.setTextSize(2);// 1 for mini
@@ -347,7 +347,7 @@ void setup() {
       
           readConfiguration(iniFilename, &cfg);
           lcdBrightness = cfg.brightness1;
-          M5.Lcd.setBrightness(lcdBrightness);
+          //M5.Lcd.setBrightness(lcdBrightness);
 
           if (sizeOfStringInCharArray(cfg.blepassword, 64) >0) {
             useConfiguredBlePassword = true;
@@ -366,11 +366,11 @@ void setup() {
           delay(1000);
           M5.Lcd.fillScreen(backGroundColor);
       
-          M5.Lcd.setBrightness(lcdBrightness);
+          //M5.Lcd.setBrightness(lcdBrightness);
           connectToWiFiIfNightScoutUrlExists();
           yield();// seems to be to let the board to things in the background, probably related to calling connectToWiFiIfNightScoutUrlExists
       
-          M5.Lcd.setBrightness(lcdBrightness);
+          //M5.Lcd.setBrightness(lcdBrightness);
           M5.Lcd.fillScreen(backGroundColor);
       
           setPageIconPos();
