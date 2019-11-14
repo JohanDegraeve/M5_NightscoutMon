@@ -1,7 +1,7 @@
 #ifndef _M5NSCONFIG_H
 #define _M5NSCONFIG_H
 
-#include <M5Stack.h>
+#include <M5StickC.h>
 #include "IniFile.h"
 
 struct tConfig {

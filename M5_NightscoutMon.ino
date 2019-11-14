@@ -31,11 +31,8 @@
     Peter Leimbach (Nightscout token)
 */
 
-#include <M5Stack.h>
+#include <M5StickC.h>
 #include <Preferences.h>
-#include <WiFi.h>
-#include <WiFiMulti.h>
-#include <HTTPClient.h>
 #include "time.h"
 // #include <util/eu_dst.h>
 #define ARDUINOJSON_USE_LONG_LONG 1
@@ -56,8 +53,6 @@
 // if debugLogging then there's more logging, haha
 const bool debugLogging = true;
 
-extern const unsigned char wifi2_icon16x16[];
-
 Preferences preferences;
 tConfig cfg;
 
@@ -77,7 +72,6 @@ int icon_ypos[1] = {0};
   #define min(a,b) (((a) < (b)) ? (a) : (b))
 #endif
 
-WiFiMulti WiFiMulti;
 unsigned long msCount;
 unsigned long msStart;
 static uint8_t lcdBrightness = 10;
@@ -116,9 +110,6 @@ struct NSinfo {
 } ns;
 
 int previousArrowAngle = 180;
-
-// if it's not an M5StackC, then it's a normal M5Stack
-bool isM5StickC = false;
 
 //////// BLE PROPERTIES  ///////
 
@@ -223,12 +214,6 @@ unsigned long getLocalTimeInSeconds() {
     if (debugLogging) {Serial.println("getLocalTime is false");}
   }
 
-  /// try setting up ntp , this will only work if wifi is on, after that, no matter if succeeded or not we will continue trying to get time from ble client
-  /// using ntp
-  if((WiFiMulti.run() == WL_CONNECTED)) {
-    if (debugLogging) {Serial.println("calling configtime");}
-    configTime(cfg.timeZone, cfg.dst, ntpServer, "time.nist.gov", "time.google.com");
-  }
 
   return 0;  
 }
@@ -264,51 +249,6 @@ void drawIcon(int16_t x, int16_t y, const uint8_t *bitmap, uint16_t color) {
   }
 }
 
-void connectToWiFiIfNightScoutUrlExists() {
-
-  // check if nightscouturl exists, otherwise don't even try to connect
-  if ( sizeOfStringInCharArray(cfg.url, 64) == 0) {
-    return;
-  }
-
-  if((WiFiMulti.run() == WL_CONNECTED)) {
-    return;
-  }
-  
-  WiFi.mode(WIFI_STA);
-  WiFi.disconnect();
-  delay(100);
-
-  Serial.println(F("WiFi connect start"));
-
-  // We start by connecting to a WiFi network
-  for(int i=0; i<=9; i++) {
-    if((cfg.wlanssid[i][0]!=0) && (cfg.wlanpass[i][0]!=0)) {
-      if (debugLogging) {
-        Serial.print(F("Adding access point "));Serial.print(cfg.wlanssid[i]);Serial.print(F(" with password "));Serial.println(cfg.wlanpass[i]);
-      }
-      WiFiMulti.addAP(cfg.wlanssid[i], cfg.wlanpass[i]);
-    }
-  }
-
-  
-  Serial.println(F("Wait for WiFi... "));
-
-  if (WiFiMulti.run() != WL_CONNECTED) {
-      Serial.println(F("Wifi not connected"));
-      yield();
-      return;
-  }
-
-  Serial.println(F(""));
-  Serial.println(F("WiFi connected to SSID ")); Serial.println(WiFi.SSID());
-
-  Serial.println(F(""));
-
-  Serial.println(F("Connection done"));
-
-}
-
 // the setup routine runs once when M5Stack starts up
 void setup() {
 
@@ -329,10 +269,10 @@ void setup() {
     SD.begin();
     
     // Lcd display
-    M5.Lcd.setBrightness(100);
+    //M5.Lcd.setBrightness(100);
     M5.Lcd.fillScreen(backGroundColor);
-    M5.Lcd.setCursor(0, 0);//(0, 0, 1) for mini
-    M5.Lcd.setTextSize(2);// 1 for mini
+    M5.Lcd.setCursor(0, 0);
+    M5.Lcd.setTextSize(1);
     
     yield();
 
@@ -347,8 +287,7 @@ void setup() {
       
           readConfiguration(iniFilename, &cfg);
           lcdBrightness = cfg.brightness1;
-          M5.Lcd.setBrightness(lcdBrightness);
-
+          
           if (sizeOfStringInCharArray(cfg.blepassword, 64) >0) {
             useConfiguredBlePassword = true;
           }
@@ -366,12 +305,6 @@ void setup() {
           delay(1000);
           M5.Lcd.fillScreen(backGroundColor);
       
-          M5.Lcd.setBrightness(lcdBrightness);
-          connectToWiFiIfNightScoutUrlExists();
-          yield();// seems to be to let the board to things in the background, probably related to calling connectToWiFiIfNightScoutUrlExists
-      
-          M5.Lcd.setBrightness(lcdBrightness);
-          M5.Lcd.fillScreen(backGroundColor);
       
           setPageIconPos();
           
@@ -392,116 +325,6 @@ void setup() {
     }
 }
 
-int readNightscout() {
-
-  int err=0;
-    
-  if((WiFiMulti.run() == WL_CONNECTED)) {
-
-    Serial.println(F("In readNightscout"));
-
-    HTTPClient http;
-    char tmpstr[32];/// DELETE THIS OR CHECK FIRST IF DETAILED DEBUGGING IS ENABLED WITH EXTRA FLAG, TO AVOID THAT THIS GETS ALLOCATED EACH TIME AGAIN AND AGAIN
-
-    M5.Lcd.fillRect(icon_xpos[0], icon_ypos[0], 16, 16, backGroundColor);
-    drawIcon(icon_xpos[0], icon_ypos[0], (uint8_t*)wifi2_icon16x16,  TFT_BLUE);
-    
-    Serial.print(F("JSON query NSurl = \'"));Serial.print(NSurl);Serial.print(F("\'\n"));
-    http.begin(NSurl); //HTTP
-    
-    Serial.print(F("[HTTP] GET...\n"));
-    // start connection and send HTTP header
-    int httpCode = http.GET();
-  
-    // httpCode will be negative on error
-    if(httpCode > 0) {
-      // HTTP header has been send and Server response header has been handled
-      Serial.printf("[HTTP] GET... code: %d\n", httpCode);
-
-      // file found at server
-      if(httpCode == HTTP_CODE_OK) {
-        String json = http.getString();
-
-        Serial.print(F("Free Heap = ")); Serial.println(ESP.getFreeHeap());
-        
-        auto JSONerr = deserializeJson(JSONdoc, json);
-        Serial.println(F("JSON deserialized OK"));
-        JsonArray arr=JSONdoc.as<JsonArray>();
-        Serial.print(F("JSON array size = ")); Serial.println(arr.size());
-        if (JSONerr || arr.size()==0) {   //Check for errors in parsing
-          if(JSONerr) {
-            err=1001; // "JSON parsing failed"
-          } else {
-            err=1002; // "No data from Nightscout"
-          }
-
-        } else {
-          JsonObject obj; 
-          int sgvindex = 0;
-          do {
-            obj=JSONdoc[sgvindex].as<JsonObject>();
-            sgvindex++;
-          } while ((!obj.containsKey(F("sgv"))) && (sgvindex<(arr.size()-1)));
-          sgvindex--;
-          if(sgvindex<0 || sgvindex>(arr.size()-1))
-            sgvindex=0;
-
-          ns.rawtime = JSONdoc[sgvindex][F("date")].as<long long>(); // sensTime is time in milliseconds since 1970, something like 1555229938118
-          strlcpy(ns.sensDir, JSONdoc[sgvindex][F("direction")] | "N/A", 32);
-          
-          ns.sensSgv = JSONdoc[sgvindex][F("sgv")]; // get value of sensor measurement
-          ns.sensTime = ns.rawtime / 1000; // no milliseconds, since 2000 would be - 946684800, but ok
-          timeStampLatestBgReadingInSecondsUTC = ns.sensTime;   
-
-          ns.sensSgvMgDl = ns.sensSgv;
-          // internally we work in mmol/L
-          ns.sensSgv/=18.0;
-          
-          localtime_r(&ns.sensTime, &ns.sensTm);
-          
-          setNsArrowAngle();                                          
-
-          // screen should be updated
-          updateGlycemia();
-          
-          Serial.print(F("sensTime = "));
-          Serial.print(ns.sensTime);
-          sprintf(tmpstr, " (JSON %lld)", (long long) ns.rawtime);
-          Serial.print(tmpstr);
-          sprintf(tmpstr, " = %s", ctime(&ns.sensTime));
-          Serial.print(tmpstr);
-          Serial.print(F("sensSgv = "));
-          Serial.println(ns.sensSgv);
-          Serial.print(F("sensDir = "));
-          Serial.println(ns.sensDir);
-          // Serial.print(ns.sensTm.tm_year+1900); Serial.print(F(" / ")); Serial.print(ns.sensTm.tm_mon+1); Serial.print(F(" / ")); Serial.println(ns.sensTm.tm_mday);
-          Serial.print(F("Sensor time: ")); Serial.print(ns.sensTm.tm_hour); Serial.print(F(":")); Serial.print(ns.sensTm.tm_min); Serial.print(F(":")); Serial.print(ns.sensTm.tm_sec); Serial.print(F(" DST ")); Serial.println(ns.sensTm.tm_isdst);
-        } 
-      } else {
-        err=httpCode;
-      }
-    } else {
-      Serial.print(F("httpCode = "));Serial.print(httpCode);Serial.print(F(", errorToString = "));Serial.println(http.errorToString(httpCode));
-      err=httpCode;
-    }
-    http.end();
-
-    if(err!=0)
-      return err;
-      
-  } else {
-    if (millis() - milliSecondsSinceLastCallToWifiConnectFromWithinNightScoutcheck > minimumTimeBetweenTwoCallsToWifiConnectFromWithinNightScoutcheck) {
-      connectToWiFiIfNightScoutUrlExists();
-      yield();
-      milliSecondsSinceLastCallToWifiConnectFromWithinNightScoutcheck = millis();
-    }
-    
-  }
-
-  M5.Lcd.fillRect(icon_xpos[0], icon_ypos[0], 16, 16, backGroundColor);
-
-  return err;
-}
 
 void updateGlycemia() {
   char tmpstr[255];// MAKE GLOBAL AND AVOID RECREATION each TIME ???
@@ -585,8 +408,12 @@ void updateGlycemia() {
       // if strings is new, then display the new string and copy to previousSensSgvStr
       if (!previousEqualToNew) {
          M5.Lcd.fillRect(0, 0,  M5.Lcd.width(),  M5.Lcd.height(), backGroundColor);
-         if (isM5StickC) {
+         if (M5.Lcd.width() <= 80) {
+            // seems to be an m5stickC 90 or 270 screen rotation
            M5.Lcd.setTextSize(1);
+         } else if (M5.Lcd.width() <= 160) {
+            // seems to be an m5stickC horizontal
+           M5.Lcd.setTextSize(2);
          } else {
            M5.Lcd.setTextSize(4);
          }
@@ -605,7 +432,7 @@ void updateGlycemia() {
 
         if (strcmp(sensSgvStr, "---") != 0) {
           if(ns.arrowAngle!=180) {
-             if (isM5StickC) {
+             if (M5.Lcd.width() <= 160) {
                 drawArrow(M5.Lcd.width() - 40, 40, 10, ns.arrowAngle+85, 30, 30, textColor);//(int x, int y, int asize, int aangle, int pwidth, int plength, uint16_t color){
              } else {
                 drawArrow( M5.Lcd.width() - 40, ay, 10, ns.arrowAngle+85, 28, 28, textColor);
@@ -636,7 +463,6 @@ void loop(){
   // if readNightScout results in a new reading, then this will also call updateGlyecemia
   if((millis()-msCount>120000L) || ((millis()-msCount>5000) && utcTimeInSeconds == 0L)  || ((millis()-msCount>15000L) && utcTimeInSeconds > 0L && (utcTimeInSeconds-timeStampLatestBgReadingInSecondsUTC>120L))) {
     updateGlycemia();
-    readNightscout();
     msCount = millis();  
   } else {
     if((cfg.restart_at_logged_errors>0) && (err_log_count>=cfg.restart_at_logged_errors)) {
@@ -847,11 +673,7 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
              // packets is byte 2, then the contents start as of the 4th byte
              // there might still be packets coming 
              std::strcpy (cfg.url + (rxValueAsByteArray[1] - 1) * (maxBytesInOneBLEPacket - 3), rxValue.c_str() + 3);
-             if (rxValueAsByteArray[1] == rxValueAsByteArray[2]) {
-              if (debugLogging) {Serial.print("received all packets, url = ");Serial.println(cfg.url);}
-              configureTargetServerAndUrl(cfg.url, cfg.token);
-              connectToWiFiIfNightScoutUrlExists();
-             }
+ 
           }
           break;
           
