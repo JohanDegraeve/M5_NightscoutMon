@@ -53,4 +53,6 @@ There's two options :
 * a fixed password : in this case a micro SD card must be used in the M5Stack, the ini file must have a password must be stored in the variable blepassword. Each iOS device that has xdrip installed (usually there's only one but you may have more), must have the same password configured in the Settings (see Settings - M5Stack)
 * a random password : if there's no parameter named blepassword configured in the ini file, then at each startup, and the first time it connects to xDrip, it will generate a random password and send this to xdrip. You can see it in the M5Stack settings. If every there's a disconnect and a reconnect, the xdrip app must authenticate with this password
 
+### For support M5StickC
 
+go to https://github.com/JohanDegraeve/M5_StickC_xdrip_iOS
