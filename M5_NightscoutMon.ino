@@ -91,6 +91,9 @@ static uint16_t backGroundColor = TFT_BLACK;
 // rotation to use
 static uint8_t rotation = 1;// 1 = horizontal, normal; 2 = 90 clockwise, 3 = upside down, 4 = 270 clockwise or 90 anti-clockwise
 
+// brightness
+static uint8_t brightness = 100;// from 0 to 100
+
 // milliseconds since start of last call to connectToWiFiIfNightScoutUrlExists from within nightscout check
 unsigned long milliSecondsSinceLastCallToWifiConnectFromWithinNightScoutcheck = 0;
 
@@ -320,6 +323,9 @@ void setup() {
 
     // set rotation
     M5.Lcd.setRotation(rotation);
+
+    // set brightness
+    M5.Lcd.setBrightness(brightness);
     
     // set text color foreground and backGroundColor
     M5.Lcd.setTextColor(textColor, backGroundColor);
@@ -1142,6 +1148,26 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
 
                     // set new rotation
                     M5.Lcd.setRotation(rotation);
+
+                    updateGlycemia();
+
+                }
+             }
+             break;
+          
+             case 0x19: {
+                Serial.println(F("received opcode for writeBrightnessTx"));
+                if (bleAuthenticated) {
+
+                    // brightness has rotation between 0 and 100
+                    brightness = rxValueAsByteArray[1];
+                    Serial.print(F("brightness value = "));Serial.println(brightness);
+                    
+                    // reinitialize previousSensSgvStr, to force a redisplay of the screen when calling updateGlycemia
+                    strcpy(previousSensSgvStr, "");
+
+                    // set new rotation
+                    M5.Lcd.setBrightness(brightness);
 
                     updateGlycemia();
 
