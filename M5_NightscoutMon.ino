@@ -314,7 +314,7 @@ void connectToWiFiIfNightScoutUrlExists() {
 
 // the setup routine runs once when M5Stack starts up
 void setup() {
-
+    
     // initialize previousSensSgvStr
     strcpy(previousSensSgvStr, "");
     
@@ -343,7 +343,7 @@ void setup() {
     yield();
 
     Serial.print(F("Free Heap: ")); Serial.println(ESP.getFreeHeap());
-
+ 
     uint8_t cardType = SD.cardType();
 
     if(cardType == CARD_NONE){
@@ -1174,6 +1174,17 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
                 }
              }
              break;
+
+             case 0x21: {
+
+                Serial.println(F("received opcode for readBatteryLevelTx"));
+
+                if (bleAuthenticated) {
+
+                    sendBatteryLevel();
+                }
+             }
+             break;
           
         }
       }
@@ -1183,7 +1194,7 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
 class BLEServerCallBack: public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) {
       Serial.println(F("BLE connect"));
-      bleDeviceConnected = true;
+      bleDeviceConnected  = true;
     };
 
     void onDisconnect(BLEServer* pServer) {
@@ -1194,6 +1205,39 @@ class BLEServerCallBack: public BLEServerCallbacks {
       bleAuthenticated = false;
     }
 };
+
+void sendBatteryLevel() {
+    if (bleAuthenticated) {
+      
+      int8_t batteryLevel = getBatteryLevel();
+
+      uint8_t dataToSend[2];
+      dataToSend[0] = 0x20;
+      dataToSend[1] = batteryLevel;
+      pRxTxCharacteristic->setValue(dataToSend, 2);
+      Serial.println(F("Sending battery level to BLE client"));
+      pRxTxCharacteristic->notify();
+      
+    }      
+}
+
+int8_t getBatteryLevel()
+{
+  Wire.beginTransmission(0x75);
+  Wire.write(0x78);
+  if (Wire.endTransmission(false) == 0
+   && Wire.requestFrom(0x75, 1)) {
+    int8_t bdata=Wire.read();
+    switch (bdata & 0xF0) {
+      case 0xE0: return 25;
+      case 0xC0: return 50;
+      case 0x80: return 75;
+      case 0x00: return 100;
+      default: return 0;
+    }
+  }
+  return -1;
+}
 
 void setupBLE() {
   
