@@ -91,6 +91,9 @@ static uint16_t backGroundColor = TFT_BLACK;
 // rotation to use
 static uint8_t rotation = 1;// 1 = horizontal, normal; 2 = 90 clockwise, 3 = upside down, 4 = 270 clockwise or 90 anti-clockwise
 
+// brightness
+static uint8_t brightness = 100;// from 0 to 100
+
 // milliseconds since start of last call to connectToWiFiIfNightScoutUrlExists from within nightscout check
 unsigned long milliSecondsSinceLastCallToWifiConnectFromWithinNightScoutcheck = 0;
 
@@ -311,7 +314,7 @@ void connectToWiFiIfNightScoutUrlExists() {
 
 // the setup routine runs once when M5Stack starts up
 void setup() {
-
+    
     // initialize previousSensSgvStr
     strcpy(previousSensSgvStr, "");
     
@@ -320,6 +323,9 @@ void setup() {
 
     // set rotation
     M5.Lcd.setRotation(rotation);
+
+    // set brightness
+    M5.Lcd.setBrightness(brightness);
     
     // set text color foreground and backGroundColor
     M5.Lcd.setTextColor(textColor, backGroundColor);
@@ -337,7 +343,7 @@ void setup() {
     yield();
 
     Serial.print(F("Free Heap: ")); Serial.println(ESP.getFreeHeap());
-
+ 
     uint8_t cardType = SD.cardType();
 
     if(cardType == CARD_NONE){
@@ -1149,6 +1155,50 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
              }
              break;
           
+             case 0x19: {
+                Serial.println(F("received opcode for writeBrightnessTx"));
+                if (bleAuthenticated) {
+
+                    // brightness has rotation between 0 and 100
+                    brightness = rxValueAsByteArray[1];
+                    Serial.print(F("brightness value = "));Serial.println(brightness);
+                    
+                    // reinitialize previousSensSgvStr, to force a redisplay of the screen when calling updateGlycemia
+                    strcpy(previousSensSgvStr, "");
+
+                    // set new rotation
+                    M5.Lcd.setBrightness(brightness);
+
+                    updateGlycemia();
+
+                }
+             }
+             break;
+
+             case 0x21: {
+
+                Serial.println(F("received opcode for readBatteryLevelTx"));
+
+                if (bleAuthenticated) {
+
+                    sendBatteryLevel();
+                }
+             }
+             break;
+
+             case 0x22: {
+
+                Serial.println(F("received opcode for writepowerOffTx"));
+
+                if (bleAuthenticated) {
+
+                  M5.powerOFF();
+                  
+                }
+                
+             }
+             break;
+          
         }
       }
     }
@@ -1157,7 +1207,7 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
 class BLEServerCallBack: public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) {
       Serial.println(F("BLE connect"));
-      bleDeviceConnected = true;
+      bleDeviceConnected  = true;
     };
 
     void onDisconnect(BLEServer* pServer) {
@@ -1168,6 +1218,39 @@ class BLEServerCallBack: public BLEServerCallbacks {
       bleAuthenticated = false;
     }
 };
+
+void sendBatteryLevel() {
+    if (bleAuthenticated) {
+      
+      int8_t batteryLevel = getBatteryLevel();
+
+      uint8_t dataToSend[2];
+      dataToSend[0] = 0x20;
+      dataToSend[1] = batteryLevel;
+      pRxTxCharacteristic->setValue(dataToSend, 2);
+      Serial.println(F("Sending battery level to BLE client"));
+      pRxTxCharacteristic->notify();
+      
+    }      
+}
+
+int8_t getBatteryLevel()
+{
+  Wire.beginTransmission(0x75);
+  Wire.write(0x78);
+  if (Wire.endTransmission(false) == 0
+   && Wire.requestFrom(0x75, 1)) {
+    int8_t bdata=Wire.read();
+    switch (bdata & 0xF0) {
+      case 0xE0: return 25;
+      case 0xC0: return 50;
+      case 0x80: return 75;
+      case 0x00: return 100;
+      default: return 0;
+    }
+  }
+  return -1;
+}
 
 void setupBLE() {
   
