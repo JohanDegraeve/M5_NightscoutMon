@@ -1,0 +1,98 @@
+[1mdiff --git a/M5_NightscoutMon.ino b/M5_NightscoutMon.ino[m
+[1mindex d2d6142..3e33ddb 100644[m
+[1m--- a/M5_NightscoutMon.ino[m
+[1m+++ b/M5_NightscoutMon.ino[m
+[36m@@ -277,7 +277,7 @@[m [mvoid connectToWiFiIfNightScoutUrlExists() {[m
+   if((WiFiMulti.run() == WL_CONNECTED)) {[m
+     return;[m
+   }[m
+[31m-  [m
+[32m+[m
+   WiFi.mode(WIFI_STA);[m
+   WiFi.disconnect();[m
+   delay(100);[m
+[36m@@ -314,7 +314,7 @@[m [mvoid connectToWiFiIfNightScoutUrlExists() {[m
+ [m
+ // the setup routine runs once when M5Stack starts up[m
+ void setup() {[m
+[31m-[m
+[32m+[m[41m    [m
+     // initialize previousSensSgvStr[m
+     strcpy(previousSensSgvStr, "");[m
+     [m
+[36m@@ -343,7 +343,7 @@[m [mvoid setup() {[m
+     yield();[m
+ [m
+     Serial.print(F("Free Heap: ")); Serial.println(ESP.getFreeHeap());[m
+[31m-[m
+[32m+[m[41m [m
+     uint8_t cardType = SD.cardType();[m
+ [m
+     if(cardType == CARD_NONE){[m
+[36m@@ -1174,6 +1174,17 @@[m [mclass BLECharacteristicCallBack: public BLECharacteristicCallbacks {[m
+                 }[m
+              }[m
+              break;[m
+[32m+[m
+[32m+[m[32m             case 0x21: {[m
+[32m+[m
+[32m+[m[32m                Serial.println(F("received opcode for readBatteryLevelTx"));[m
+[32m+[m
+[32m+[m[32m                if (bleAuthenticated) {[m
+[32m+[m
+[32m+[m[32m                    sendBatteryLevel();[m
+[32m+[m[32m                }[m
+[32m+[m[32m             }[m
+[32m+[m[32m             break;[m
+           [m
+         }[m
+       }[m
+[36m@@ -1183,7 +1194,7 @@[m [mclass BLECharacteristicCallBack: public BLECharacteristicCallbacks {[m
+ class BLEServerCallBack: public BLEServerCallbacks {[m
+     void onConnect(BLEServer* pServer) {[m
+       Serial.println(F("BLE connect"));[m
+[31m-      bleDeviceConnected = true;[m
+[32m+[m[32m      bleDevice  = true;[m
+     };[m
+ [m
+     void onDisconnect(BLEServer* pServer) {[m
+[36m@@ -1195,6 +1206,39 @@[m [mclass BLEServerCallBack: public BLEServerCallbacks {[m
+     }[m
+ };[m
+ [m
+[32m+[m[32mvoid sendBatteryLevel() {[m
+[32m+[m[32m    if (bleAuthenticated) {[m
+[32m+[m[41m      [m
+[32m+[m[32m      int8_t batteryLevel = getBatteryLevel();[m
+[32m+[m
+[32m+[m[32m      uint8_t dataToSend[2];[m
+[32m+[m[32m      dataToSend[0] = 0x20;[m
+[32m+[m[32m      dataToSend[1] = batteryLevel[m
+[32m+[m[32m      pRxTxCharacteristic->setValue(dataToSend, 2);[m
+[32m+[m[32m      Serial.println(F("Sending battery level to BLE client"));[m
+[32m+[m[32m      pRxTxCharacteristic->notify();[m
+[32m+[m[41m      [m
+[32m+[m[32m    }[m[41m      [m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mint8_t getBatteryLevel()[m
+[32m+[m[32m{[m
+[32m+[m[32m  Wire.beginTransmission(0x75);[m
+[32m+[m[32m  Wire.write(0x78);[m
+[32m+[m[32m  if (Wire.endTransmission(false) == 0[m
+[32m+[m[32m   && Wire.requestFrom(0x75, 1)) {[m
+[32m+[m[32m    int8_t bdata=Wire.read();[m
+[32m+[m[32m    switch (bdata & 0xF0) {[m
+[32m+[m[32m      case 0xE0: return 25;[m
+[32m+[m[32m      case 0xC0: return 50;[m
+[32m+[m[32m      case 0x80: return 75;[m
+[32m+[m[32m      case 0x00: return 100;[m
+[32m+[m[32m      default: return 0;[m
+[32m+[m[32m    }[m
+[32m+[m[32m  }[m
+[32m+[m[32m  return -1;[m
+[32m+[m[32m}[m
+[32m+[m
+ void setupBLE() {[m
+   [m
+   Serial.begin(115200);[m

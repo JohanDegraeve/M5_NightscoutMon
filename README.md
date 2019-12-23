@@ -20,7 +20,7 @@ With xdrip one can
  * Scan for and connect to multiple M5Stacks. It's ony been tested with one for now, more tests are planned with two M5Stacks
  * Configure WiFi Access points : names and passwords, maximum 3 access points (the first 3, the original project allows up to 10 configured in the ini file)
  * configure NightScout url and token
- * configure brightness (still under development)
+ * configure brightness
  * configure the text color, backgroundColor (xdrip 3.2.0), rotation (xdrip 3.2.0)
  * configure (optional) a password ==> if a password is set in the M5Stack, then the same password must be configured in the xdrip app - this is not strictly necessary, see further on
  * the selected bloodglucose unit (mgdl or mmol) will also be sent to the M5Stack
@@ -53,4 +53,6 @@ There's two options :
 * a fixed password : in this case a micro SD card must be used in the M5Stack, the ini file must have a password must be stored in the variable blepassword. Each iOS device that has xdrip installed (usually there's only one but you may have more), must have the same password configured in the Settings (see Settings - M5Stack)
 * a random password : if there's no parameter named blepassword configured in the ini file, then at each startup, and the first time it connects to xDrip, it will generate a random password and send this to xdrip. You can see it in the M5Stack settings. If every there's a disconnect and a reconnect, the xdrip app must authenticate with this password
 
+### For support M5StickC
 
+go to https://github.com/JohanDegraeve/M5_StickC_xdrip_iOS
