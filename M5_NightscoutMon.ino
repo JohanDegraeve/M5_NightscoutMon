@@ -1222,7 +1222,7 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
                   connectToWiFi = false;
                   
                   WiFi.mode(WIFI_STA);
-                  WiFi.disconnect();
+                  WiFi.disconnect(true);
   
                 }
 
