@@ -94,6 +94,8 @@ static uint8_t rotation = 1;// 1 = horizontal, normal; 2 = 90 clockwise, 3 = ups
 // brightness
 static uint8_t brightness = 100;// from 0 to 100
 
+bool connectToWiFi = true;
+
 // milliseconds since start of last call to connectToWiFiIfNightScoutUrlExists from within nightscout check
 unsigned long milliSecondsSinceLastCallToWifiConnectFromWithinNightScoutcheck = 0;
 
@@ -271,6 +273,11 @@ void connectToWiFiIfNightScoutUrlExists() {
 
   // check if nightscouturl exists, otherwise don't even try to connect
   if ( sizeOfStringInCharArray(cfg.url, 64) == 0) {
+    return;
+  }
+
+  if (!connectToWiFi) {
+    Serial.println(F("connectToWiFi = false, will not try to connect to Wifi"));
     return;
   }
 
@@ -1196,6 +1203,30 @@ class BLECharacteristicCallBack: public BLECharacteristicCallbacks {
                   
                 }
                 
+             }
+             break;
+
+             case 0x23: {
+
+                char * shouldConnectToWiFi = new char[6];// value is literally "true" or "false"
+                Serial.println(F("received opcode for writeConnectToWiFiTx"));
+                std::strcpy (shouldConnectToWiFi, rxValue.c_str() + 3);// starts at postion 4, because split in packets is used
+                
+                if (strcmp(shouldConnectToWiFi, "true") == 0) {
+
+                  connectToWiFi = true;
+                  connectToWiFiIfNightScoutUrlExists();
+                  
+                } else {
+
+                  connectToWiFi = false;
+                  
+                  WiFi.mode(WIFI_STA);
+                  WiFi.disconnect();
+  
+                }
+
+
              }
              break;
           
