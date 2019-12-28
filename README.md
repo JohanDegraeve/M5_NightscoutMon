@@ -14,15 +14,16 @@ I recommend to first read https://github.com/mlukasek/M5_NightscoutMon
 
 ### What is available in this project
 
-There's only one screen, with the bloodglucose value and an arrow. Always the same color. A bluetooth connection can be made with an iOS device that has xdrip installed : https://github.com/JohanDegraeve/xdripswift. The iOS device can send readings directly to the M5Stack, but the M5Stack can also download readings from NightScout - a microSD card can be installed but is not required (see further on)
+There's only one screen, with the bloodglucose value and an arrow. A bluetooth connection can be made with an iOS device that has xdrip installed : https://github.com/JohanDegraeve/xdripswift. The iOS device can send readings directly to the M5Stack, but the M5Stack can also download readings from NightScout - a microSD card can be installed but is not required (see further on)
 
 With xdrip one can
- * Scan for and connect to multiple M5Stacks. It's ony been tested with one for now, more tests are planned with two M5Stacks
+ * Scan for and connect to multiple M5Stacks.
  * Configure WiFi Access points : names and passwords, maximum 3 access points (the first 3, the original project allows up to 10 configured in the ini file)
  * configure NightScout url and token
  * configure brightness
- * configure the text color, backgroundColor (xdrip 3.2.0), rotation (xdrip 3.2.0)
+ * configure the text color, backgroundColor, rotation
  * configure (optional) a password ==> if a password is set in the M5Stack, then the same password must be configured in the xdrip app - this is not strictly necessary, see further on
+ * switch off the M5Stack
  * the selected bloodglucose unit (mgdl or mmol) will also be sent to the M5Stack
  * Send readings : the M5Stack can receive readings from xdrip. If it doesn't receive readings, and if there's a WiFi connection and also a NightScout url (optionally also token) configured, then the M5Stack will try to download readings from NightScout 
 
