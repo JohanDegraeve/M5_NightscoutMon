@@ -122,9 +122,6 @@ struct NSinfo {
 
 int previousArrowAngle = 180;
 
-// if it's not an M5StackC, then it's a normal M5Stack
-bool isM5StickC = false;
-
 //////// BLE PROPERTIES  ///////
 
 // used for creating random password
@@ -598,11 +595,7 @@ void updateGlycemia() {
       // if strings is new, then display the new string and copy to previousSensSgvStr
       if (!previousEqualToNew) {
          M5.Lcd.fillRect(0, 0,  M5.Lcd.width(),  M5.Lcd.height(), backGroundColor);
-         if (isM5StickC) {
-           M5.Lcd.setTextSize(1);
-         } else {
-           M5.Lcd.setTextSize(4);
-         }
+         M5.Lcd.setTextSize(4);
 
          M5.Lcd.setTextDatum(MC_DATUM);
          M5.Lcd.drawString(sensSgvStr, M5.Lcd.width()/2, M5.Lcd.height()/2, GFXFF);
@@ -618,11 +611,7 @@ void updateGlycemia() {
 
         if (strcmp(sensSgvStr, "---") != 0) {
           if(ns.arrowAngle!=180) {
-             if (isM5StickC) {
-                drawArrow(M5.Lcd.width() - 40, 40, 10, ns.arrowAngle+85, 30, 30, textColor);//(int x, int y, int asize, int aangle, int pwidth, int plength, uint16_t color){
-             } else {
-                drawArrow( M5.Lcd.width() - 40, ay, 10, ns.arrowAngle+85, 28, 28, textColor);
-             }
+             drawArrow(M5.Lcd.width() - 40, 40, 10, ns.arrowAngle+85, 30, 30, textColor);//(int x, int y, int asize, int aangle, int pwidth, int plength, uint16_t color){
           }
         }
 
